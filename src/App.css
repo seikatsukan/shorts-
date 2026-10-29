@@ -1095,3 +1095,6 @@ ul {
 @keyframes model-pulse {
   50% { opacity: 0.4; }
 }
+.model-container {
+  cursor: pointer;
+}

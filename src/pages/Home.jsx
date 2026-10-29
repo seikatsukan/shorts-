@@ -2,7 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Ellipsis, X, LogOut, ChartBar, Plus, Lock } from 'lucide-react';
 import { useApp, useNow } from '../store/AppContext';
-import { AppIcon } from '../components/ui';
+import { AppIcon, ErrorBoundary } from '../components/ui';
 import { getEvolution, formatCountdown, formatClock, formatMinutes } from '../data/apps';
 
 // 3D（three.js）は重いので、画面を先に出してからキャラだけ後で読み込む
@@ -13,6 +13,7 @@ export default function Home() {
   const { coins, activeLocks, completed, dismissCompleted, startDraft, logOut } = useApp();
   const now = useNow();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [tapCount, setTapCount] = useState(0);
   const evolution = getEvolution(coins);
 
   const startWizard = () => {
@@ -55,11 +56,18 @@ export default function Home() {
         </div>
       )}
 
-      {/* キャラクター（進化するたびに大きくなる） */}
-      <div className="model-container">
-        <Suspense fallback={<div className="model-loading" />}>
-          <SlimeCanvas stage={evolution.stage} />
-        </Suspense>
+      {/* キャラクター（進化するたびに大きくなる。タップするとジャンプ） */}
+      <div className="model-container" onClick={() => setTapCount((c) => c + 1)}>
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={<div className="model-loading" />}>
+            <SlimeCanvas
+              stage={evolution.stage}
+              walking={sortedLocks.length > 0}
+              celebrating={!!completed}
+              tapCount={tapCount}
+            />
+          </Suspense>
+        </ErrorBoundary>
       </div>
 
       <div className="evolution">

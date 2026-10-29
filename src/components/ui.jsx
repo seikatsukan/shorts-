@@ -1,3 +1,4 @@
+import { Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { getAppMeta } from '../data/apps';
@@ -49,4 +50,21 @@ export function WizardHeader({ step, title, subtitle }) {
       {subtitle && <p className="page-subtitle">{subtitle}</p>}
     </>
   );
+}
+
+// 中でエラーが起きても画面全体を止めずに fallback を表示する（3Dモデルの読み込み失敗など）
+export class ErrorBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    console.error(error);
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
 }

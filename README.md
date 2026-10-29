@@ -440,12 +440,41 @@ Instagram を 60 分、カスタムで追加した LINE（`line.me`）を 45 分
 |---|---|---|
 | コイン | **10 分ごとに 1 枚**。1 回のスタートで複数アプリをロックした時は、**一番長い制限時間**で計算する（例: 30 分 + 60 分 → 6 枚）。そのスタートのロックが全部終わった時に付与する | [`src/data/apps.js`](src/data/apps.js) `coinsFor` / [`AppContext.jsx`](src/store/AppContext.jsx) |
 | 進化 | 累計コイン **10 / 30 / 60 / 100 枚**で進化（段階 0〜4） | `src/data/apps.js` `EVOLUTION_THRESHOLDS` |
-| キャラの大きさ | 段階ごとに大きくなる（`STAGE_SCALES`）。Blender のモデルは `.glb` で `public/models/slime.glb` に置き、`MODEL_URL` を `'/models/slime.glb'` にすると差し替わる | [`src/components/Slime.jsx`](src/components/Slime.jsx) |
+| キャラの大きさ | 進化の段階ごとに大きくなる（`STAGE_SCALES`）。詳しくは下の「キャラクター（slime.glb）」 | [`src/components/Slime.jsx`](src/components/Slime.jsx) |
 | 初めての利用者 | ログインしていない時は `/` で説明ページ（PCの準備 → 使い方 → アカウント）を表示する。ログイン中はメイン画面へ。ログインしていないのにメイン画面などを開くと `/` に戻す | [`src/App.jsx`](src/App.jsx) `Entry` / `RequireAccount` |
 | アカウントごとのデータ | コイン・ロック中のアプリ・カスタムアプリはアカウントごとに分けて端末に保存する。別のアカウントでログインしても混ざらない。ログアウト中もロックは PC 側で続き、次にログインした時に終了処理（「おめでとう」とコイン付与）をする | [`src/store/AppContext.jsx`](src/store/AppContext.jsx) |
 | 説明の省略 | 一度説明を見た端末（ログアウト後など）は、説明を飛ばして Step 3 のログイン画面から始める（「戻る」で説明も見られる）。初めての端末でも、右上の「ログイン」で説明を飛ばせる（機種変更などでアカウントを持っている人向け） | [`src/pages/Onboarding.jsx`](src/pages/Onboarding.jsx) / `AppContext.jsx` の `tutorialSeen` |
 | スキップ | スキップできるのは目的の選択だけ | [`src/pages/PurposeSelect.jsx`](src/pages/PurposeSelect.jsx) |
 | ロック中のアプリ | すでにロック中のアプリは、ロック追加で選べない | [`src/pages/AppSelect.jsx`](src/pages/AppSelect.jsx) |
+
+## キャラクター（slime.glb）
+
+Blender で作ったスライムを [`public/models/slime.glb`](public/models/slime.glb) に置いている。表示は [`src/components/Slime.jsx`](src/components/Slime.jsx)。
+Blender で作り直した時は、同じ名前で上書きすればそのまま反映される（下の決まりを守っていればコードの変更は不要）。
+
+### モデルの決まり
+
+| 項目 | 決まり |
+|---|---|
+| 大きさ・向き | 高さ 1.0・原点は足元（底の中心）。正面は Blender の正面ビュー（three.js では +Z） |
+| アクション | `Idle`（ループ）・`Walk`（ループ。その場で跳ねるだけで前進は入れない）・`Jump`（1回） |
+| シェイプキー | `MouthOpen`（0 = 閉じる / 1 = 開く）。どのアクションでも動かさない（アプリ側で操作する） |
+| マテリアル | Principled BSDF のみ。マテリアルごとにメッシュが分かれるので、`MouthOpen` は全メッシュにかける |
+| 法線 | カスタム法線を使っているので、アプリ側で法線を計算し直さない（`computeVertexNormals()` を呼ばない） |
+
+### いつどの動きをするか
+
+| 場面 | 動き |
+|---|---|
+| 普段 | `Idle` |
+| ロック中 | `Walk` で左右に行ったり来たり（前進と向きはアプリ側で動かす） |
+| 「おめでとう！」が出た時 / キャラをタップした時 | `Jump` を 1 回（口を開ける）→ 終わる少し前から元の動きに戻る |
+| 進化した時 | 新しい大きさまでなめらかに大きくなる |
+
+- アクションが無い場合はその動きを飛ばすので、アクションを減らしてもエラーにはならない。
+- **歩く幅は自動で決まる**: キャラは丸い枠の中に表示される。大きさごとに、`Walk` と `Jump` でいちばん変形した姿勢でも枠の円からはみ出さない範囲を計算し、その中だけを歩く（大きい段階ほど歩く幅は狭くなる）。計算に使うスライムの外形と変形量は `Slime.jsx` の `PROFILE` / `POSES` にある。**モデルの形や動きを大きく変えた時は、この値も測り直すこと**。
+- 進化段階ごとの大きさ・歩く幅の上限・歩く速さ・ジャンプ中の口の開き具合は、`Slime.jsx` の先頭の定数で変えられる。
+- モデルの読み込みに失敗しても、キャラの部分が空になるだけで画面は止まらない。
 
 ## ファイル構成
 
@@ -465,4 +494,6 @@ src/
     PurposeSelect.jsx    ② 目的（スキップ可）
     Confirm.jsx          ③ 最終確認 → PC サーバーへ送信
     Stats.jsx            まとめ（今週 / 今月のグラフ・カレンダー）
+public/
+  models/slime.glb       キャラクター（Blender で作成）
 ```
