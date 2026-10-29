@@ -15,7 +15,7 @@
 import { DEFAULT_APPS, PURPOSES } from './data/apps';
 
 const STORAGE_KEY = 'sns-blocker:sessions';
-export const IS_MOCK_STORAGE = true;
+const IS_MOCK_STORAGE = true;
 
 // 記録を保存先へ送る
 export async function saveRecord(record) {
@@ -24,10 +24,11 @@ export async function saveRecord(record) {
 
 // 指定アカウントの、期間内（from <= startedAt < to）の記録を保存先から取得する
 // demo: 記録がまだ無いため見た目確認用のデータを返したかどうか（モックのみ）
-export async function fetchRecords({ userId, from, to }) {
+// allowDemo: false にするとデモデータを返さない（毎日の目標の判定などに使う時）
+export async function fetchRecords({ userId, from, to, allowDemo = true }) {
   await new Promise((r) => setTimeout(r, 200)); // 通信の待ち時間を再現
   const saved = readLocal().filter((r) => r.userId === userId);
-  const demo = IS_MOCK_STORAGE && saved.length === 0;
+  const demo = allowDemo && IS_MOCK_STORAGE && saved.length === 0;
   const source = demo ? makeDemoRecords(userId) : saved;
   return {
     records: source.filter((r) => {

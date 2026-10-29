@@ -31,7 +31,7 @@
 //   }
 
 const SERVER_URL = import.meta.env.VITE_LOCK_SERVER_URL;
-export const IS_MOCK = !SERVER_URL;
+const IS_MOCK = !SERVER_URL;
 
 // PCサーバーが対応していないアプリがあった時のエラー
 export class UnsupportedAppError extends Error {

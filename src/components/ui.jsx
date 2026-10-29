@@ -62,6 +62,7 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error) {
     console.error(error);
+    this.props.onError?.(error);
   }
 
   render() {

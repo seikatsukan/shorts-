@@ -51,26 +51,11 @@ export function getChartColor(name) {
   return CHART_COLORS[DEFAULT_APPS.length + (hash % (CHART_COLORS.length - DEFAULT_APPS.length))];
 }
 
-// ---- コイン・進化 ----
+// ---- コイン ----
 
 // 10分ごとにコイン1枚
-export const MINUTES_PER_COIN = 10;
+const MINUTES_PER_COIN = 10;
 export const coinsFor = (minutes) => Math.floor(minutes / MINUTES_PER_COIN);
-
-// 累計コインがこの枚数に達すると次の段階へ進化
-export const EVOLUTION_THRESHOLDS = [10, 30, 60, 100];
-
-export function getEvolution(coins) {
-  const stage = EVOLUTION_THRESHOLDS.filter((t) => coins >= t).length;
-  const next = EVOLUTION_THRESHOLDS[stage];
-  const prev = stage === 0 ? 0 : EVOLUTION_THRESHOLDS[stage - 1];
-  return {
-    stage,
-    remaining: next === undefined ? 0 : next - coins,
-    progress: next === undefined ? 1 : (coins - prev) / (next - prev),
-    isMax: next === undefined,
-  };
-}
 
 // ---- 表示用フォーマット ----
 

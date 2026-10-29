@@ -403,28 +403,6 @@ ul {
   overflow: hidden;
 }
 
-.evolution {
-  width: 200px;
-  margin: 0 auto 24px;
-  text-align: center;
-}
-.evolution-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: #e6e2dc;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-.evolution-bar div {
-  height: 100%;
-  background: #e9a23b;
-  border-radius: 3px;
-  transition: width 0.4s ease;
-}
-.evolution-text {
-  font-size: 12px;
-  color: var(--text-sub);
-}
 
 .lock-row {
   display: flex;
@@ -1097,4 +1075,261 @@ ul {
 }
 .model-container {
   cursor: pointer;
+}
+
+/* 開発中だけのテスト用ボタン */
+.dev-tools {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 2px 0 12px;
+}
+.dev-tools button {
+  padding: 6px 10px;
+  border: 1px dashed #c06;
+  border-radius: 8px;
+  color: #c06;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.dev-tools button:disabled {
+  opacity: 0.4;
+}
+
+/* ---- 毎日の目標 ---- */
+.habit-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px 12px;
+  margin-bottom: 8px;
+}
+/* 今日の目標（いちばん目立たせる） */
+.today-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.today-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-sub);
+}
+.today-value {
+  font-size: 13px;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+}
+.today-value strong {
+  font-size: 22px;
+  color: var(--text);
+}
+.today.done .today-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: #12895f;
+}
+.today-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: #ebe7e1;
+  overflow: hidden;
+  margin: 6px 0 6px;
+}
+.today-bar div {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+.today-bar .planned {
+  background: repeating-linear-gradient(-45deg, #f6d9a6 0 6px, #fbe9c8 6px 12px);
+}
+.today-bar .elapsed {
+  background: #e9a23b;
+}
+.today.done .today-bar .elapsed {
+  background: #1baf7a;
+}
+.today-hint {
+  font-size: 13px;
+  font-weight: 600;
+}
+.today.done .today-hint {
+  color: #12895f;
+}
+/* 連続日数・あと何日・チケット・21日の道のり */
+.habit-bottom {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.habit-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.habit-streak {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.habit-next {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+.habit-next strong {
+  color: var(--text);
+}
+.next-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 2px;
+}
+.color-track {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 10px;
+  padding-bottom: 14px;
+}
+.track-day {
+  flex: 1;
+  height: 8px;
+  border-radius: 2px;
+  background: #ebe7e1;
+}
+.track-day.filled {
+  background: var(--c);
+}
+.track-day.today {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--c);
+  animation: track-pulse 1.2s ease-in-out infinite;
+}
+@keyframes track-pulse {
+  50% { opacity: 0.35; }
+}
+.track-color {
+  position: relative;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0 1px;
+  border-radius: 50%;
+  /* まだ届いていない色は薄く（下の「◯日」の文字は薄くしない） */
+  background: color-mix(in srgb, var(--c) 30%, #ffffff);
+}
+.track-color.reached {
+  background: var(--c);
+}
+.track-color.current {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent);
+}
+.track-label {
+  position: absolute;
+  top: 17px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.track-color:first-child .track-label {
+  left: 0;
+  transform: none;
+}
+.track-color:last-child .track-label {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.habit-ticket {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.habit-ticket:active {
+  transform: scale(0.95);
+}
+.ticket-list {
+  margin-bottom: 16px;
+}
+.ticket-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 14px;
+}
+.ticket-list li + li:not(.ticket-note) {
+  border-top: 1px solid var(--border);
+}
+.ticket-list .ticket-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-top: 0;
+}
+.goal-cta {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 8px;
+  border: 1.5px dashed #e9a23b;
+  border-radius: var(--radius);
+  background: #fff6e0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.sheet-desc {
+  font-size: 13px;
+  color: var(--text-sub);
+  line-height: 1.6;
+  margin: -8px 0 14px;
+}
+.sheet-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 12px;
+}
+.habit-report .report-list {
+  text-align: left;
+  margin: 12px 0 20px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.report-list li {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.report-list li + li {
+  border-top: 1px solid var(--border);
+}
+.report-day {
+  flex-shrink: 0;
+  min-width: 40px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.report-up {
+  font-weight: 700;
+}
+.report-down,
+.report-miss {
+  color: var(--danger);
+}
+.habit-report .primary-button {
+  width: 100%;
 }

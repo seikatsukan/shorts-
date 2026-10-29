@@ -1,20 +1,83 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ellipsis, X, LogOut, ChartBar, Plus, Lock } from 'lucide-react';
+import { Ellipsis, X, LogOut, ChartBar, Plus, Lock, Target } from 'lucide-react';
 import { useApp, useNow } from '../store/AppContext';
-import { AppIcon, ErrorBoundary } from '../components/ui';
-import { getEvolution, formatCountdown, formatClock, formatMinutes } from '../data/apps';
+import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
+import { formatCountdown, formatClock, formatMinutes } from '../data/apps';
+import {
+  COLORS, GOAL_OPTIONS, MAX_EXTRA_TICKETS, MAX_STAGE, STEP_DAYS, TICKET_PRICE,
+  dayStart, hasCrown, hasTicket, minutesOnDay, nextDay, ticketCount,
+} from '../habit';
 
 // 3D（three.js）は重いので、画面を先に出してからキャラだけ後で読み込む
 const SlimeCanvas = lazy(() => import('../components/Slime'));
 
+// お休みチケットを食べる演出
+const SNACK_FIRST_DELAY = 0.6; // 画面が見えてから1枚目が飛び始めるまで（秒。気づけるように少し待つ）
+const SNACK_INTERVAL = 0.45; // 2枚目以降の間隔（秒）
+const SNACK_GIVE_UP = 15; // 画面が見えているのに終わらない時に、食べたことにして先へ進むまで（秒）
+
 export default function Home() {
   const navigate = useNavigate();
-  const { coins, activeLocks, completed, dismissCompleted, startDraft, logOut } = useApp();
+  const {
+    coins, activeLocks, completed, dismissCompleted, startDraft, logOut,
+    habit, lockRanges, habitEvents, dismissHabitEvents, markTicketsEaten, setGoal, evaluateHabit, buyTicket,
+  } = useApp();
   const now = useNow();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [tapCount, setTapCount] = useState(0);
-  const evolution = getEvolution(coins);
+  // 1日の目標を決める画面（まだ決めていなければ最初から開く）
+  const [goalOpen, setGoalOpen] = useState(!habit);
+  const [ticketOpen, setTicketOpen] = useState(false);
+
+  // お休みチケットを使った時は、お知らせを出す前にスライムがチケットを食べる
+  // - 判定の結果は保存されているので、食べる前にアプリを閉じても次に開いた時に食べる
+  // - 画面が裏に回っている間は止まり（描画が止まるため）、見えるようになってから飛ぶ
+  // - 何枚か使った時は少し間をあけて順番に。「おめでとう」が出ている間は待つ
+  const snacks = completed
+    ? []
+    : habitEvents
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => e.type === 'ticket' && !e.eaten)
+        .map(({ i }, n) => ({ id: i, delay: SNACK_FIRST_DELAY + n * SNACK_INTERVAL }));
+  const pendingSnacks = snacks.map((x) => x.id).join(',');
+  const skipSnacks = () => markTicketsEaten(snacks.map((x) => x.id));
+  // 3D が表示できない時も、お知らせが出ないままにならないように
+  // （読み込みに失敗した時はすぐ、画面が見えている状態で長く終わらない時は SNACK_GIVE_UP 秒後に先へ進む）
+  const [modelFailed, setModelFailed] = useState(false);
+  const skipRef = useRef(skipSnacks);
+  useEffect(() => {
+    skipRef.current = skipSnacks;
+  });
+  useEffect(() => {
+    if (!pendingSnacks) return;
+    if (modelFailed) {
+      skipRef.current();
+      return;
+    }
+    let timer;
+    const restart = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === 'visible') timer = setTimeout(() => skipRef.current(), SNACK_GIVE_UP * 1000);
+    };
+    restart();
+    document.addEventListener('visibilitychange', restart);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', restart);
+    };
+  }, [pendingSnacks, modelFailed]);
+
+  // 今日の進み具合（実際に経過した分 / 今のロックが終わるまで含めた分）を毎秒計算する
+  const today = dayStart(now);
+  const elapsed = minutesOnDay(lockRanges, today, now);
+  const planned = minutesOnDay(lockRanges, today, nextDay(today));
+  const todayDone = !!habit && habit.settledUntil > today;
+  // 目標に届いたらすぐ判定する（1分ごとの判定を待たずに「達成」にする）
+  const reached = !!habit && elapsed >= habit.goal;
+  useEffect(() => {
+    if (reached && !todayDone) evaluateHabit();
+  }, [reached, todayDone, evaluateHabit]);
 
   const startWizard = () => {
     // 今の履歴位置を覚えておき、ロック開始後はここまで戻る（戻るボタンで入力途中の画面に戻らないように）
@@ -49,6 +112,15 @@ export default function Home() {
             <button className="menu-item" onClick={() => navigate('/stats')}>
               <ChartBar size={20} /> 週/月のまとめ
             </button>
+            <button
+              className="menu-item"
+              onClick={() => {
+                setIsMenuOpen(false);
+                setGoalOpen(true);
+              }}
+            >
+              <Target size={20} /> 1日の目標
+            </button>
             <button className="menu-item" onClick={handleLogout}>
               <LogOut size={20} /> ログアウト
             </button>
@@ -56,28 +128,40 @@ export default function Home() {
         </div>
       )}
 
-      {/* キャラクター（進化するたびに大きくなる。タップするとジャンプ） */}
+      {/* キャラクター（毎日の目標を続けると色が変わる。タップするとジャンプ） */}
       <div className="model-container" onClick={() => setTapCount((c) => c + 1)}>
-        <ErrorBoundary fallback={null}>
+        <ErrorBoundary fallback={null} onError={() => setModelFailed(true)}>
           <Suspense fallback={<div className="model-loading" />}>
             <SlimeCanvas
-              stage={evolution.stage}
+              colorStage={habit?.stage ?? 0}
+              crown={hasCrown(habit)}
               walking={sortedLocks.length > 0}
               celebrating={!!completed}
               tapCount={tapCount}
+              snacks={snacks}
+              onSnackEaten={(id) => markTicketsEaten([id])}
             />
           </Suspense>
         </ErrorBoundary>
       </div>
 
-      <div className="evolution">
-        <div className="evolution-bar">
-          <div style={{ width: `${evolution.progress * 100}%` }} />
-        </div>
-        <p className="evolution-text">
-          {evolution.isMax ? '最終進化！' : `あと ${evolution.remaining} コインで進化`}
-        </p>
-      </div>
+      {habit ? (
+        <HabitPanel
+          habit={habit}
+          elapsed={elapsed}
+          planned={planned}
+          done={todayDone}
+          now={now}
+          onTicket={() => setTicketOpen(true)}
+        />
+      ) : (
+        <button className="goal-cta" onClick={() => setGoalOpen(true)}>
+          🎯 1日の目標を決めよう
+        </button>
+      )}
+
+      {/* 開発中（npm run dev）だけ表示するテスト用ボタン。本番のビルドには入らない */}
+      {import.meta.env.DEV && <DevTools />}
 
       {/* ロック中のアプリ */}
       {sortedLocks.length > 0 && (
@@ -133,6 +217,293 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 毎日の目標の結果（「おめでとう」を閉じて、チケットを食べ終わった後に出す） */}
+      {!completed && snacks.length === 0 && habitEvents.length > 0 && (
+        <HabitReport events={habitEvents} onClose={dismissHabitEvents} />
+      )}
+
+      {ticketOpen && habit && (
+        <TicketSheet habit={habit} coins={coins} now={now} onBuy={buyTicket} onClose={() => setTicketOpen(false)} />
+      )}
+
+      {goalOpen && (
+        <GoalSheet
+          current={habit?.goal}
+          onSelect={(goal) => {
+            setGoal(goal);
+            setGoalOpen(false);
+          }}
+          onClose={() => setGoalOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// 今日の目標（いちばん大きく）・連続日数・色の段階・お休みチケット
+function HabitPanel({ habit, elapsed, planned, done, now, onTicket }) {
+  const isSilver = habit.stage === MAX_STAGE;
+  const goal = habit.goal;
+  const locking = planned > elapsed + 0.01; // 今ロック中（この先の分が残っている）
+  const remain = Math.max(1, Math.ceil(goal - elapsed));
+  let hint;
+  if (done) hint = '✓ 今日の目標を達成しました';
+  else if (locking && planned >= goal) hint = `ロック中… あと ${remain}分で達成`;
+  else if (locking) hint = `ロック中。終わってもあと ${Math.ceil(goal - planned)}分 足りません`;
+  else hint = `あと ${remain}分 ロックすると今日の目標を達成`;
+
+  return (
+    <section className="habit-card">
+      {/* 今日の目標 */}
+      <div className={`today${done ? ' done' : ''}`}>
+        <div className="today-head">
+          <span className="today-label">今日の目標</span>
+          <span className="today-value">
+            {done ? '達成！' : (
+              <>
+                <strong>{Math.floor(elapsed)}</strong> / {formatMinutes(goal)}
+              </>
+            )}
+          </span>
+        </div>
+        <div className="today-bar">
+          {/* 薄い部分は、今のロックが終わるまでに増える分 */}
+          {!done && <div className="planned" style={{ width: `${Math.min(1, planned / goal) * 100}%` }} />}
+          <div className="elapsed" style={{ width: `${done ? 100 : Math.min(1, elapsed / goal) * 100}%` }} />
+        </div>
+        <p className="today-hint">{hint}</p>
+      </div>
+
+      <div className="habit-bottom">
+        <div className="habit-top">
+          <span className="habit-streak">🔥 {habit.streak}日連続</span>
+          <span className="habit-next">
+            {isSilver ? (
+              '銀色をキープ中！'
+            ) : (
+              <>
+                あと <strong>{STEP_DAYS[habit.stage] - habit.progress}日</strong> で
+                <span className="next-dot" style={{ background: COLORS[habit.stage + 1].hex }} />
+                {COLORS[habit.stage + 1].name}
+              </>
+            )}
+          </span>
+          <button className="habit-ticket" onClick={onTicket} aria-label="お休みチケット">
+            🎫 {ticketCount(habit, now)}
+          </button>
+        </div>
+        <ColorTrack stage={habit.stage} progress={habit.progress} done={done} />
+      </div>
+    </section>
+  );
+}
+
+// 色が変わる日（0, 3, 7, 14, 21日目）
+const MILESTONES = STEP_DAYS.reduce((acc, d) => [...acc, acc[acc.length - 1] + d], [0]);
+const TOTAL_DAYS = MILESTONES[MILESTONES.length - 1];
+
+// 21日分の道のり。1マスが1日で、色が変わる日に次の色の丸を置く
+// 達成した日はその区間の色で塗り、今日のマスは点滅させる（今日達成するとここまで進む）
+function ColorTrack({ stage, progress, done }) {
+  const filledDays = stage === MAX_STAGE ? TOTAL_DAYS : MILESTONES[stage] + progress;
+  const items = [];
+  COLORS.forEach((color, k) => {
+    items.push(
+      <span
+        key={`c${k}`}
+        className={`track-color${k <= stage ? ' reached' : ''}${k === stage ? ' current' : ''}`}
+        style={{ '--c': color.hex }}
+        title={k === 0 ? color.name : `${MILESTONES[k]}日目で${color.name}`}
+      >
+        <span className="track-label">{k === 0 ? 'スタート' : `${MILESTONES[k]}日`}</span>
+      </span>,
+    );
+    if (k === MAX_STAGE) return;
+    for (let d = MILESTONES[k]; d < MILESTONES[k + 1]; d++) {
+      const isToday = d === filledDays && !done && stage < MAX_STAGE;
+      items.push(
+        <span
+          key={`d${d}`}
+          className={`track-day${d < filledDays ? ' filled' : ''}${isToday ? ' today' : ''}`}
+          style={{ '--c': COLORS[k + 1].hex }}
+        />,
+      );
+    }
+  });
+  return (
+    <div className="color-track" role="img" aria-label={`21日のうち ${filledDays}日 進んでいます`}>
+      {items}
+    </div>
+  );
+}
+
+// お休みチケット（コインで買える）
+function TicketSheet({ habit, coins, now, onBuy, onClose }) {
+  const extra = habit.extraTickets ?? 0;
+  const full = extra >= MAX_EXTRA_TICKETS;
+  const short = coins < TICKET_PRICE;
+  return (
+    <Sheet title="🎫 お休みチケット" onClose={onClose}>
+      <p className="sheet-desc">
+        目標に届かなかった日を自動で守ります（色も連続記録もそのまま）。今週の無料チケットから先に使います。
+      </p>
+      <ul className="ticket-list">
+        <li>
+          <span>今週の無料チケット</span>
+          <strong>{hasTicket(habit, now) ? '1枚' : '使用済み'}</strong>
+        </li>
+        <li className="ticket-note">毎週月曜に1枚もらえます（持ち越しはできません）</li>
+        <li>
+          <span>コインで買ったチケット</span>
+          <strong>
+            {extra} / {MAX_EXTRA_TICKETS}枚
+          </strong>
+        </li>
+      </ul>
+      <button className="primary-button full" onClick={onBuy} disabled={full || short}>
+        🪙 {TICKET_PRICE} で1枚買う
+      </button>
+      <p className="sheet-note">
+        {full
+          ? `これ以上は持てません（${MAX_EXTRA_TICKETS}枚まで）`
+          : short
+            ? `コインが足りません（今 ${coins}枚）。ロックをやりきるとコインがもらえます`
+            : `持っているコイン: ${coins}枚`}
+      </p>
+    </Sheet>
+  );
+}
+
+const formatDay = (t) => {
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
+
+function eventText(e) {
+  switch (e.type) {
+    case 'up':
+      return `${COLORS[e.from].name} → ${COLORS[e.to].name} に進化！（${e.streak}日連続）`;
+    case 'success':
+      return `目標達成！（${e.streak}日連続）`;
+    case 'ticket':
+      return e.kind === 'extra'
+        ? '目標に届かず → 買ったお休みチケットで守りました'
+        : '目標に届かず → 今週のお休みチケットで守りました';
+    case 'down':
+      return `目標に届かず → ${COLORS[e.from].name} から ${COLORS[e.to].name} に戻りました`;
+    default:
+      return e.continued ? '目標に届かず（色はこれ以上下がりません）' : '目標に届かず → 連続記録が 0 に戻りました';
+  }
+}
+
+// 毎日の目標の判定結果（進化・退化・チケット使用など）
+function HabitReport({ events, onClose }) {
+  // 失敗が続いた日は1行にまとめる（例: 10/30〜11/4）
+  const rows = [];
+  for (const e of events) {
+    const last = rows[rows.length - 1];
+    if (e.continued && last?.continued) last.until = e.day;
+    else rows.push({ ...e });
+  }
+  const up = events.some((e) => e.type === 'up');
+  const down = events.some((e) => e.type === 'down');
+  // 見出しは中身に合わせて具体的に
+  const only = (type) => events.every((e) => e.type === type);
+  const [emoji, title] = up
+    ? ['✨', '進化した！']
+    : down
+      ? ['💧', '色が1つ戻りました']
+      : only('success')
+        ? ['🎯', '今日の目標を達成！']
+        : only('ticket')
+          ? ['🎫', 'お休みチケットで守りました']
+          : only('miss')
+            ? ['💧', '目標に届きませんでした']
+            : ['📅', '前回からの結果'];
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal habit-report">
+        <p className="result-emoji">{emoji}</p>
+        <h2>{title}</h2>
+        <ul className="report-list">
+          {rows.map((e, i) => (
+            <li key={i} className={`report-${e.type}`}>
+              <span className="report-day">
+                {formatDay(e.day)}
+                {e.until && `〜${formatDay(e.until)}`}
+              </span>
+              <span>{eventText(e)}</span>
+            </li>
+          ))}
+        </ul>
+        <button className="primary-button" onClick={onClose}>
+          OK
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// 1日の目標を決める
+function GoalSheet({ current, onSelect, onClose }) {
+  const isCustom = current && !GOAL_OPTIONS.includes(current);
+  const [showCustom, setShowCustom] = useState(isCustom);
+  const [custom, setCustom] = useState(isCustom ? String(current) : '');
+  const parsed = Number(custom);
+  const customValid = Number.isInteger(parsed) && parsed >= 10 && parsed <= 720;
+
+  return (
+    <Sheet title="1日の目標" onClose={onClose}>
+      <p className="sheet-desc">
+        1日にこの時間ロックできたら「成功」。続けるとスライムの色が変わり、21日続けると銀色になります。
+      </p>
+      <div className="option-grid">
+        {GOAL_OPTIONS.map((m) => (
+          <button key={m} className={`option${current === m ? ' active' : ''}`} onClick={() => onSelect(m)}>
+            {formatMinutes(m)}
+          </button>
+        ))}
+        <button className={`option${showCustom ? ' active' : ''}`} onClick={() => setShowCustom(true)}>
+          カスタム
+        </button>
+      </div>
+      {showCustom && (
+        <div className="custom-input-row">
+          <input
+            type="number"
+            inputMode="numeric"
+            min="10"
+            max="720"
+            placeholder="10〜720"
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            autoFocus
+          />
+          <span>分</span>
+          <button className="primary-button small" disabled={!customValid} onClick={() => onSelect(parsed)}>
+            決定
+          </button>
+        </div>
+      )}
+      {current && <p className="sheet-note">変更した目標は今日の判定から使われます。</p>}
+    </Sheet>
+  );
+}
+
+// 開発中（npm run dev）だけ表示するテスト用ボタン
+function DevTools() {
+  const { habit, devAddCoins, devHabitDay } = useApp();
+  return (
+    <div className="dev-tools">
+      <button onClick={() => devAddCoins(10)}>🧪 コイン+10</button>
+      <button onClick={() => devHabitDay(true)} disabled={!habit}>
+        🧪 1日成功
+      </button>
+      <button onClick={() => devHabitDay(false)} disabled={!habit}>
+        🧪 1日失敗
+      </button>
     </div>
   );
 }

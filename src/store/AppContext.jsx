@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { coinsFor } from '../data/apps';
-import { saveRecord } from '../storage';
+import { fetchRecords, saveRecord } from '../storage';
 import { uuid } from '../utils';
+import {
+  MAX_EXTRA_TICKETS, TICKET_PRICE, applyDay, fetchRangeFor, mergeRanges, minutesByDay, newHabit, settle,
+} from '../habit';
 
 // アプリ全体で共有する状態（コイン・ロック中のアプリなど）
 // ※コイン・ロック・カスタムアプリはアカウントごとに分けて持つ（別のアカウントでログインしても混ざらない）
@@ -18,11 +21,17 @@ const initialState = {
 };
 
 const emptyUser = {
-  coins: 0,
+  coins: 0, // 持っているコイン（ロックをやりきるともらえる。お休みチケットを買うのに使う）
+  habit: null, // 毎日の目標と色の段階（habit.js の newHabit の形）。目標を決めるまでは null
+  // まだ画面で知らせていない判定の結果（habit.js の applyDay の event）。
+  // アプリを閉じても消えないように保存し、知らせ終わったら空にする。食べたチケットには eaten: true を付ける
+  habitEvents: [],
   activeLocks: [], // { id, groupId, name, minutes, purpose, startAt, endAt }
   finishedLocks: [], // 終了したが、同じスタートの他のロックがまだ続いているもの
   customApps: [], // ユーザーが追加したアプリ { name, domain }
 };
+
+const NO_EVENTS = []; // 判定の結果が無い時（毎回同じ配列を使う）
 
 const emptyDraft = { apps: [], purpose: null, unsupported: [], startIdx: null };
 
@@ -116,6 +125,52 @@ export function AppProvider({ children }) {
     return () => clearInterval(id);
   }, [activeLocks, finishedLocks, now, updateUser]);
 
+  // ---- 毎日の目標の判定（habit.js） ----
+  // アプリを開いた時・1分ごと（日付が変わったら判定するため）・ロックを始めた時に判定する
+  const habit = user.habit ?? null;
+  const habitEvents = user.habitEvents ?? NO_EVENTS;
+  // 判定に使ったロックの時間の範囲（今日の進み具合を毎秒表示するため。habit.js の mergeRanges の形）
+  const [lockRanges, setLockRanges] = useState([]);
+  const habitRef = useRef(habit);
+  useEffect(() => {
+    habitRef.current = habit;
+  }, [habit]);
+  const evaluatingRef = useRef(false);
+
+  const evaluateHabit = useCallback(async () => {
+    const h = habitRef.current;
+    if (!userId || !h || evaluatingRef.current) return;
+    evaluatingRef.current = true;
+    try {
+      const t = now();
+      const { from, to } = fetchRangeFor(h, t);
+      // デモデータで成功扱いにならないように、実際の記録だけを使う
+      const { records } = await fetchRecords({ userId, from: new Date(from), to: new Date(to), allowDemo: false });
+      // 実際に経過した分だけ数える（ロック中の残り時間は、経過してから数える）
+      const minutes = minutesByDay(records, t);
+      setLockRanges(mergeRanges(records));
+      // 取得している間に別の判定が進んでいたら何もしない
+      const latest = habitRef.current;
+      if (!latest || latest.settledUntil !== h.settledUntil) return;
+      const { habit: next, events } = settle(latest, minutes, t);
+      if (events.length === 0) return;
+      habitRef.current = next;
+      updateUser((u) => ({ ...u, habit: next, habitEvents: [...(u.habitEvents ?? []), ...events] }));
+    } catch (e) {
+      console.error('毎日の目標の判定に失敗しました', e);
+    } finally {
+      evaluatingRef.current = false;
+    }
+  }, [userId, now, updateUser]);
+
+  const habitGoal = habit?.goal;
+  useEffect(() => {
+    if (!habitGoal) return;
+    evaluateHabit();
+    const id = setInterval(evaluateHabit, 60_000);
+    return () => clearInterval(id);
+  }, [evaluateHabit, habitGoal]);
+
   const value = useMemo(
     () => ({
       account: state.account,
@@ -132,7 +187,30 @@ export function AppProvider({ children }) {
         setState((s) => ({ ...s, account: null }));
         setCompleted(null);
         setDraft(emptyDraft);
+        setLockRanges([]);
       },
+
+      habit,
+      lockRanges,
+      habitEvents,
+      evaluateHabit,
+      // コインでお休みチケットを1枚買う（コインが足りない・持てる上限の時は何もしない）
+      buyTicket: () =>
+        updateUser((u) =>
+          u.habit && u.coins >= TICKET_PRICE && (u.habit.extraTickets ?? 0) < MAX_EXTRA_TICKETS
+            ? { ...u, coins: u.coins - TICKET_PRICE, habit: { ...u.habit, extraTickets: (u.habit.extraTickets ?? 0) + 1 } }
+            : u,
+        ),
+      // 1日の目標を決める・変える（初めて決めた日から数え始める）
+      setGoal: (goal) =>
+        updateUser((u) => ({ ...u, habit: u.habit ? { ...u.habit, goal } : newHabit(goal, now()) })),
+      dismissHabitEvents: () => updateUser((u) => ({ ...u, habitEvents: [] })),
+      // お休みチケットを食べ終わった（habitEvents の何番目か）
+      markTicketsEaten: (indexes) =>
+        updateUser((u) => ({
+          ...u,
+          habitEvents: (u.habitEvents ?? []).map((e, i) => (indexes.includes(i) ? { ...e, eaten: true } : e)),
+        })),
 
       // カスタムアプリのドメイン（デフォルトのアプリは undefined）
       customDomainOf: (name) => user.customApps.find((a) => a.name === name)?.domain,
@@ -184,7 +262,9 @@ export function AppProvider({ children }) {
           startedAt: new Date(startAt).toISOString(),
           apps: locks.map(({ name, minutes }) => ({ name, minutes })),
           purpose: purpose || null,
-        }).catch((e) => console.error('記録の保存に失敗しました', e));
+        })
+          .then(evaluateHabit) // 今日の目標に届いたかを判定
+          .catch((e) => console.error('記録の保存に失敗しました', e));
         setState((s) => ({ ...s, clockOffset }));
         updateUser((u) => ({
           ...u,
@@ -196,8 +276,24 @@ export function AppProvider({ children }) {
       },
 
       dismissCompleted: () => setCompleted(null),
+
+      // 開発中（npm run dev）だけのテスト用。本番のビルドには入らない
+      ...(import.meta.env.DEV && {
+        devAddCoins: (n) => updateUser((u) => ({ ...u, coins: u.coins + n })),
+        // 1日分の成功／失敗をその場で反映する（21日待たずに色の変化を試すため）
+        devHabitDay: (ok) => {
+          if (!habit) return;
+          const day = habit.settledUntil - 86_400_000;
+          const { habit: next, event } = applyDay(habit, ok, day);
+          updateUser((u) => ({
+            ...u,
+            habit: { ...next, settledUntil: habit.settledUntil },
+            habitEvents: [...(u.habitEvents ?? []), event],
+          }));
+        },
+      }),
     }),
-    [state.account, state.tutorialSeen, userId, user, now, draft, completed, updateUser],
+    [state.account, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
