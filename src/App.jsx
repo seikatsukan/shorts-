@@ -3,7 +3,6 @@ import { AppProvider, useApp } from './store/AppContext';
 import Onboarding from './pages/Onboarding';
 import Home from './pages/Home';
 import AppSelect from './pages/AppSelect';
-import PurposeSelect from './pages/PurposeSelect';
 import Confirm from './pages/Confirm';
 import Stats from './pages/Stats';
 import ModeSelect from './pages/ModeSelect';
@@ -50,7 +49,6 @@ export default function App() {
             <Route path="/fixed-setup" element={<RequireNotFixed><FixedSetup /></RequireNotFixed>} />
             <Route path="/home" element={<RequireMode><HomeByMode /></RequireMode>} />
             <Route path="/select-app" element={<RequireMode mode="timer"><AppSelect /></RequireMode>} />
-            <Route path="/select-purpose" element={<RequireMode mode="timer"><PurposeSelect /></RequireMode>} />
             <Route path="/confirm" element={<RequireMode mode="timer"><Confirm /></RequireMode>} />
             <Route path="/stats" element={<RequireMode mode="timer"><Stats /></RequireMode>} />
             <Route path="*" element={<Navigate to="/" replace />} />

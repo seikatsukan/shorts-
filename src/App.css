@@ -594,29 +594,6 @@ ul {
   margin-top: 6px;
 }
 
-.purpose-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.purpose-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  height: 60px;
-  padding: 0 18px;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 14px;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: left;
-}
-.purpose-item.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .confirm-row {
   display: flex;
   align-items: center;
@@ -1700,4 +1677,22 @@ ul {
     font-size: 21px;
     margin-bottom: 10px;
   }
+}
+/* モードの向いている人（説明の最初に目立たせる） */
+.mode-lead {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+/* 今日の目標の横に出す目的 */
+.today-purpose {
+  margin-left: 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+/* 固定時間を始める前の確認に出す目的 */
+.confirm-purpose-line {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 12px;
 }

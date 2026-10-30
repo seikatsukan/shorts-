@@ -39,7 +39,7 @@ const emptyUser = {
 
 const NO_EVENTS = []; // 判定の結果が無い時（毎回同じ配列を使う）
 
-const emptyDraft = { apps: [], purpose: null, unsupported: [], startIdx: null };
+const emptyDraft = { apps: [], unsupported: [], startIdx: null };
 
 function loadState() {
   try {
@@ -77,14 +77,16 @@ export function AppProvider({ children }) {
   }, [state]);
 
   const userId = state.account?.userId ?? null;
-  const user = (userId && state.users[userId]) || emptyUser;
+  // 保存してあるデータに項目が足りない時（古い版で保存したものなど）は、初期値で補う
+  const savedUser = userId && state.users[userId];
+  const user = useMemo(() => (savedUser ? { ...emptyUser, ...savedUser } : emptyUser), [savedUser]);
 
   // ログイン中のアカウントのデータを更新する
   const updateUser = useCallback((fn) => {
     setState((s) => {
       const id = s.account?.userId;
       if (!id) return s;
-      return { ...s, users: { ...s.users, [id]: fn(s.users[id] ?? emptyUser) } };
+      return { ...s, users: { ...s.users, [id]: fn({ ...emptyUser, ...s.users[id] }) } };
     });
   }, []);
 
@@ -211,6 +213,8 @@ export function AppProvider({ children }) {
             ? { ...u, coins: u.coins - TICKET_PRICE, habit: { ...u.habit, extraTickets: (u.habit.extraTickets ?? 0) + 1 } }
             : u,
         ),
+      // 目的を決める・変える（null は目的なし）。1日の目標を決めた後に聞く
+      setPurpose: (purpose) => updateUser((u) => (u.habit ? { ...u, habit: { ...u.habit, purpose } } : u)),
       // 1日の目標を決める・変える（初めて決めた日から数え始める）
       setGoal: (goal) =>
         updateUser((u) => ({ ...u, habit: u.habit ? { ...u.habit, goal } : newHabit(goal, now()) })),
@@ -234,7 +238,6 @@ export function AppProvider({ children }) {
             : d.apps.filter((a) => a.name !== name),
           unsupported: minutes ? d.unsupported : d.unsupported.filter((n) => n !== name),
         })),
-      setDraftPurpose: (purpose) => setDraft((d) => ({ ...d, purpose })),
       setDraftUnsupported: (names) => setDraft((d) => ({ ...d, unsupported: names })),
       resetDraft: () => setDraft(emptyDraft),
 
@@ -264,7 +267,9 @@ export function AppProvider({ children }) {
       },
 
       // サーバーから成功が返ってきたロックを登録し、保存先へ記録を送る
-      addLocks: ({ locks, startAt, clockOffset, purpose }) => {
+      // 目的は1日の目標と一緒に決めたもの（habit.purpose）を記録に付ける
+      addLocks: ({ locks, startAt, clockOffset }) => {
+        const purpose = habit?.purpose ?? null;
         const groupId = uuid();
         saveRecord({
           id: groupId,

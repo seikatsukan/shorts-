@@ -118,7 +118,7 @@ export default function AppSelect() {
         <button
           className="primary-button"
           disabled={draft.apps.length === 0 || draft.unsupported.length > 0}
-          onClick={() => navigate('/select-purpose')}
+          onClick={() => navigate('/confirm')}
         >
           次へ
         </button>

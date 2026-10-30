@@ -30,7 +30,8 @@ export function Sheet({ title, onClose, children }) {
   );
 }
 
-// ロック設定の各ステップ共通のヘッダー
+// ロック設定の各ステップ共通のヘッダー（アプリと時間 → 最終確認 の2ステップ）
+const WIZARD_STEPS = [1, 2];
 export function WizardHeader({ step, title, subtitle }) {
   const navigate = useNavigate();
   return (
@@ -40,7 +41,7 @@ export function WizardHeader({ step, title, subtitle }) {
           <ChevronLeft size={24} />
         </button>
         <div className="steps">
-          {[1, 2, 3].map((n) => (
+          {WIZARD_STEPS.map((n) => (
             <span key={n} className={n <= step ? 'step-dot active' : 'step-dot'} />
           ))}
         </div>

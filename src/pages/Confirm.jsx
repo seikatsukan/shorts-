@@ -8,7 +8,7 @@ import { formatMinutes } from '../data/apps';
 
 export default function Confirm() {
   const navigate = useNavigate();
-  const { draft, addLocks, resetDraft, customDomainOf, setDraftUnsupported, setDraftApp } = useApp();
+  const { draft, addLocks, resetDraft, customDomainOf, setDraftUnsupported, setDraftApp, habit } = useApp();
   // 通信中（ローディング）とエラーの状態
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +30,7 @@ export default function Confirm() {
       // カスタムアプリだけドメインを付ける
       const apps = draft.apps.map((a) => ({ ...a, domain: customDomainOf(a.name) }));
       const result = await startLock({ apps });
-      addLocks({ ...result, purpose: draft.purpose });
+      addLocks(result);
       // 一部だけ始められなかった時は、始められたアプリを外して残りだけもう一度試せるようにする
       // （始めたタイマーは止められないので、ここで全部をやり直しにはしない）
       if (result.failed.length > 0) {
@@ -59,7 +59,7 @@ export default function Confirm() {
 
   return (
     <div className="screen wizard-screen">
-      <WizardHeader step={3} title="最終確認" />
+      <WizardHeader step={2} title="最終確認" />
 
       <section className="card">
         <h3 className="card-label">制限するアプリ</h3>
@@ -74,7 +74,9 @@ export default function Confirm() {
 
       <section className="card">
         <h3 className="card-label">目的</h3>
-        <p className="confirm-purpose">{draft.purpose ?? '設定なし'}</p>
+        {/* 目的は1日の目標と一緒に決めたもの（ロックのたびには聞かない） */}
+        <p className="confirm-purpose">{habit?.purpose ? `${habit.purpose}のため` : '設定なし'}</p>
+        <p className="sheet-note">メニューの「1日の目標と目的」で変えられます</p>
       </section>
 
       <p className="warning-text">

@@ -7,8 +7,9 @@ import { MAX_UNLOCK_TICKETS, UNLOCK_PRICE, UNLOCK_SETTINGS, settleFixed } from '
 //
 // user.fixedDraft: 予定を決めている途中の内容 { entries, progress }（閉じても消えないように保存）
 //   entries: [{ id, days, start, end, apps: [アプリ名] }] / progress: サーバーに作り終わった分（やり直しの時に飛ばす）
+//   purpose: 目的（始める前に聞く。null は目的なし）
 // user.fixed: 始めた後の状態（自分でロックするモードのコイン・スライムとは別に持つ）
-//   schedule: 予定 / ruleIds: { 予定のid: サーバーのルールID }
+//   schedule: 予定 / ruleIds: { 予定のid: サーバーのルールID } / purpose: 目的（null は目的なし）
 //   habit: 色の段階など（habit.js の形。お休みチケットは使わない） / events: まだ知らせていない判定の結果
 //   coins / unlockTickets: 一時解除チケットの枚数 / unlocks: 使った一時解除 [{ id, requestedAt, startsAt, endsAt }]
 //   unlockMinutes: 今サーバーで効いている一時解除の長さ（分）
@@ -93,6 +94,7 @@ export function useFixedMode({ user, updateUser, now }) {
       fixed: {
         schedule: draft.entries,
         ruleIds: result.rules,
+        purpose: draft.purpose ?? null,
         habit: { ...newHabit(null, t), startedAt: t },
         events: [],
         coins: 0,
@@ -183,7 +185,11 @@ export function useFixedMode({ user, updateUser, now }) {
     evaluateFixed,
     chooseTimerMode: () => updateUser((u) => ({ ...u, mode: 'timer' })),
     saveFixedDraft: (entries) =>
-      updateUser((u) => ({ ...u, fixedDraft: { entries, progress: u.fixedDraft?.progress ?? null } })),
+      updateUser((u) => ({ ...u, fixedDraft: { ...u.fixedDraft, entries, progress: u.fixedDraft?.progress ?? null } })),
+    setFixedDraftPurpose: (purpose) =>
+      updateUser((u) => ({ ...u, fixedDraft: { entries: [], progress: null, ...u.fixedDraft, purpose } })),
+    // 始めた後も目的は変えられる（ブロックの決まりには関係しないので）
+    setFixedPurpose: (purpose) => updateFixed((f) => ({ ...f, purpose })),
     dismissFixedEvents: () => updateFixed((f) => ({ ...f, events: [] })),
     dismissFixedNotice: () => updateFixed((f) => ({ ...f, notice: null })),
     buyUnlockTicket: () =>

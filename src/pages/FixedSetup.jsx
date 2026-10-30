@@ -4,6 +4,7 @@ import { ChevronLeft, Copy, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-r
 import { useApp } from '../store/AppContext';
 import { AppIcon, Sheet } from '../components/ui';
 import { CustomAppSheet } from './AppSelect';
+import { PurposeSheet } from '../components/PurposeSheet';
 import { DEFAULT_APPS, formatMinutes } from '../data/apps';
 import {
   DAY_LABELS, END_OF_DAY, EVERY_DAY, MAX_UNLOCK_TICKETS, UNLOCK_PRICE, WEEKDAYS, WEEKEND, WEEK_ORDER,
@@ -29,10 +30,12 @@ const SUGGESTIONS = [
 // 固定時間で自動ロックの予定を決める（曜日・時間帯・アプリを予定ごとに）
 export default function FixedSetup() {
   const navigate = useNavigate();
-  const { mode, fixedDraft, saveFixedDraft, startFixed, customApps } = useApp();
+  const { mode, fixedDraft, saveFixedDraft, setFixedDraftPurpose, startFixed, customApps } = useApp();
+  const purpose = fixedDraft?.purpose ?? null;
   const entries = fixedDraft?.entries ?? [];
   const allApps = [...DEFAULT_APPS.map((a) => a.name), ...customApps.map((a) => a.name)];
-  // 開いているポップアップ: { type: 'entry', entry } / { type: 'confirm' } / null
+  // 開いているポップアップ: { type: 'entry', entry } / { type: 'purpose' } / { type: 'confirm' } / null
+  // 「この予定で始める」→ 目的（スキップ可）→ 確認 の順に開く
   const [popup, setPopup] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -143,7 +146,7 @@ export default function FixedSetup() {
 
       <div className="bottom-bar">
         <span className="bottom-bar-info">{entries.length > 0 ? `${entries.length}個の予定` : '予定なし'}</span>
-        <button className="primary-button" disabled={entries.length === 0} onClick={() => setPopup({ type: 'confirm' })}>
+        <button className="primary-button" disabled={entries.length === 0} onClick={() => setPopup({ type: 'purpose' })}>
           {error ? 'もう一度試す' : 'この予定で始める'}
         </button>
       </div>
@@ -158,8 +161,21 @@ export default function FixedSetup() {
         />
       )}
 
+      {popup?.type === 'purpose' && (
+        <PurposeSheet
+          current={purpose}
+          description="決めておくと、メイン画面に出ます。ロックの決まりには関係しません。"
+          onSelect={(p) => {
+            setFixedDraftPurpose(p);
+            setPopup({ type: 'confirm' });
+          }}
+          onClose={() => setPopup(null)}
+        />
+      )}
+
       {popup?.type === 'confirm' && (
         <Sheet title="この予定で始めますか？" onClose={() => setPopup(null)}>
+          <p className="confirm-purpose-line">🎯 {purpose ? `${purpose}のため` : '目的なし'}</p>
           <ul className="confirm-entries">
             {entries.map((e) => (
               <li key={e.id}>

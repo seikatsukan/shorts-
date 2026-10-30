@@ -5,6 +5,7 @@ import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
 import { formatCountdown, formatClock, formatMinutes } from '../data/apps';
+import { PurposeSheet } from '../components/PurposeSheet';
 import {
   COLORS, GOAL_OPTIONS, MAX_EXTRA_TICKETS, MAX_STAGE, STEP_DAYS, TICKET_PRICE,
   dayStart, hasCrown, hasTicket, minutesOnDay, nextDay, ticketCount,
@@ -22,13 +23,15 @@ export default function Home() {
   const navigate = useNavigate();
   const {
     coins, activeLocks, completed, dismissCompleted, startDraft, logOut,
-    habit, lockRanges, habitEvents, dismissHabitEvents, markTicketsEaten, setGoal, evaluateHabit, buyTicket,
+    habit, lockRanges, habitEvents, dismissHabitEvents, markTicketsEaten, setGoal, setPurpose, evaluateHabit, buyTicket,
   } = useApp();
   const now = useNow();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [tapCount, setTapCount] = useState(0);
   // 1日の目標を決める画面（まだ決めていなければ最初から開く）
   const [goalOpen, setGoalOpen] = useState(!habit);
+  // 目的を決める画面（1日の目標を決めた後に続けて開く。スキップできる）
+  const [purposeOpen, setPurposeOpen] = useState(false);
   const [ticketOpen, setTicketOpen] = useState(false);
 
   // お休みチケットを使った時は、お知らせを出す前にスライムがチケットを食べる
@@ -120,7 +123,7 @@ export default function Home() {
                 setGoalOpen(true);
               }}
             >
-              <Target size={20} /> 1日の目標
+              <Target size={20} /> 1日の目標と目的
             </button>
             {/* 固定時間へはいつでも移れる（スライムの成長とコインはリセット。予定の画面で知らせる） */}
             <button className="menu-item" onClick={() => navigate('/fixed-setup')}>
@@ -238,8 +241,20 @@ export default function Home() {
           onSelect={(goal) => {
             setGoal(goal);
             setGoalOpen(false);
+            setPurposeOpen(true);
           }}
           onClose={() => setGoalOpen(false)}
+        />
+      )}
+
+      {purposeOpen && (
+        <PurposeSheet
+          current={habit?.purpose ?? null}
+          onSelect={(purpose) => {
+            setPurpose(purpose);
+            setPurposeOpen(false);
+          }}
+          onClose={() => setPurposeOpen(false)}
         />
       )}
     </div>
@@ -263,7 +278,10 @@ function HabitPanel({ habit, elapsed, planned, done, now, onTicket }) {
       {/* 今日の目標 */}
       <div className={`today${done ? ' done' : ''}`}>
         <div className="today-head">
-          <span className="today-label">今日の目標</span>
+          <span className="today-label">
+            今日の目標
+            {habit.purpose && <span className="today-purpose">🎯 {habit.purpose}のため</span>}
+          </span>
           <span className="today-value">
             {done ? '達成！' : (
               <>

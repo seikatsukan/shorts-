@@ -1,9 +1,10 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CalendarX, Ellipsis, Lock, LockOpen, LogOut, X } from 'lucide-react';
+import { CalendarClock, CalendarX, Ellipsis, Lock, LockOpen, LogOut, Target, X } from 'lucide-react';
 import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
+import { PurposeSheet } from '../components/PurposeSheet';
 import { formatClock, formatCountdown } from '../data/apps';
 import { COLORS, MAX_STAGE, STEP_DAYS, dayStart, hasCrown } from '../habit';
 import {
@@ -23,12 +24,12 @@ export default function FixedHome() {
   const navigate = useNavigate();
   const {
     fixed, fixedEvents, dismissFixedEvents, dismissFixedNotice, buyUnlockTicket, startUnlock, cancelFixed,
-    approvePending, logOut,
+    approvePending, setFixedPurpose, logOut,
   } = useApp();
   const now = useNow();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [tapCount, setTapCount] = useState(0);
-  // 開いているポップアップ: 'shop' / 'unlock' / 'schedule' / 'cancel' / null
+  // 開いているポップアップ: 'shop' / 'unlock' / 'schedule' / 'purpose' / 'cancel' / null
   const [popup, setPopup] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -102,6 +103,15 @@ export default function FixedHome() {
             >
               <CalendarClock size={20} /> ロックの予定
             </button>
+            <button
+              className="menu-item"
+              onClick={() => {
+                setIsMenuOpen(false);
+                setPopup('purpose');
+              }}
+            >
+              <Target size={20} /> 目的
+            </button>
             {!fixed.cancelling && (
               <button
                 className="menu-item"
@@ -168,7 +178,10 @@ export default function FixedHome() {
       <section className="habit-card">
         <div className={`today fixed-today${settledToday && !usedToday ? ' done' : ''}`}>
           <div className="today-head">
-            <span className="today-label">今日のロック</span>
+            <span className="today-label">
+              今日のロック
+              {fixed.purpose && <span className="today-purpose">🎯 {fixed.purpose}のため</span>}
+            </span>
             <span className="today-value">{locked ? 'ロック中' : unlocking ? '一時解除中' : ''}</span>
           </div>
           {todayList.length > 0 && (
@@ -300,6 +313,18 @@ export default function FixedHome() {
           </ul>
           <p className="sheet-note">予定は変えられません。変える時は、キャンセルしてから決め直します。</p>
         </Sheet>
+      )}
+
+      {popup === 'purpose' && (
+        <PurposeSheet
+          current={fixed.purpose ?? null}
+          description="メイン画面に出す目的です。ロックの決まりには関係しないので、いつでも変えられます。"
+          onSelect={(p) => {
+            setFixedPurpose(p);
+            setPopup(null);
+          }}
+          onClose={() => setPopup(null)}
+        />
       )}
 
       {popup === 'cancel' && (
