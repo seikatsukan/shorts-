@@ -215,7 +215,7 @@ function TimeSheet({ title, current, onSelect, onRemove, onEdit, onClose }) {
 }
 
 // カスタムアプリの追加・修正（名前と正式なドメイン）
-function CustomAppSheet({ initial, serverError, existing, onSave, onRemove, onClose }) {
+export function CustomAppSheet({ initial, serverError, existing, onSave, onRemove, onClose }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [domainInput, setDomainInput] = useState(initial?.domain ?? '');
   const [touched, setTouched] = useState(false);

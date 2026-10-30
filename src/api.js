@@ -19,6 +19,7 @@
 //   { "type": "sites", "apps": [], "domains": ["line.me"], "categoryIds": [] }
 
 import { DEFAULT_APPS } from './data/apps';
+import { UNLOCK_SETTINGS, formatDays, formatTimeRange } from './fixed';
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 const IS_MOCK = !API_BASE;
@@ -108,6 +109,94 @@ export async function startLock({ apps }) {
   };
 }
 
+// ---- 固定時間で自動ロック ----
+//
+// 予定（曜日・時間帯・アプリ）ごとに時間帯（window）のルールを1つ作る。作るのはいつもすぐ反映
+//   { "name": "火 2:00〜3:00", "schedule": { "type": "window", "start": "02:00", "end": "03:00", "days": [2] },
+//     "target": { "type": "sites", "apps": ["youtube"], "domains": [], "categoryIds": [] } }
+// 一時解除の決まり（長さ・1日の回数・待ち時間）は PATCH /settings で設定する。
+// 今の設定より緩いと反映待ちになり、翌朝以降に承認するまで前の設定のまま（長さ・回数は今の設定で動く）
+//
+// 途中で失敗した時は、終わった分を progress に入れて投げる。もう一度呼ぶ時に渡すと、終わった分は飛ばす
+// （ルールを消すのは翌朝の承認が要るので、同じ予定のルールを二重に作らないように）
+
+// 予定を始める。entries: [{ id, days, start, end, apps: [{ name, domain? }] }]
+// 戻り値 { settings: { applyMode, pendingChange, unlockMinutes }, rules: { 予定のid: ルールID } }
+export async function setupFixedSchedule(entries, progress = {}) {
+  const done = { settings: progress.settings ?? null, rules: { ...progress.rules } };
+  try {
+    const options = await request('GET', '/options');
+    if (!done.settings) {
+      const res = await request('PATCH', '/settings', { unlock: UNLOCK_SETTINGS });
+      done.settings = {
+        applyMode: res.applyMode,
+        pendingChange: res.pendingChange ? pendingOf(res.pendingChange) : null,
+        unlockMinutes: res.settings?.unlock?.unlockMinutes ?? UNLOCK_SETTINGS.unlockMinutes,
+      };
+    }
+    for (const entry of entries) {
+      if (done.rules[entry.id]) continue;
+      const targets = entry.apps.map((app) => targetFor(app, options));
+      const res = await request('POST', '/rules', {
+        name: `${formatDays(entry.days)} ${formatTimeRange(entry.start, entry.end)}`.slice(0, 50),
+        schedule: { type: 'window', start: entry.start, end: entry.end, days: entry.days },
+        target: {
+          type: 'sites',
+          apps: [...new Set(targets.flatMap((t) => t.apps))],
+          domains: [...new Set(targets.flatMap((t) => t.domains))],
+          categoryIds: [],
+        },
+      });
+      done.rules[entry.id] = res.rule.id;
+    }
+    return done;
+  } catch (e) {
+    e.progress = done;
+    throw e;
+  }
+}
+
+// 一時解除を申請する（全部のルール）。申請した時点でサーバーの今日の回数を1回使う
+// 戻り値 { id, requestedAt, startsAt, endsAt }（ミリ秒）。待ち時間がある時は startsAt まではブロックのまま
+export async function requestUnlock() {
+  const u = await request('POST', '/unlocks', {});
+  return { id: u.id, requestedAt: Date.parse(u.requestedAt), startsAt: Date.parse(u.startsAt), endsAt: Date.parse(u.endsAt) };
+}
+
+// 予定のルールを消す（キャンセル）。オンのルールを消すのは「緩める変更」なので反映待ちになる
+// 戻り値: 反映待ちの変更 [{ id, ruleId, approvableFrom, expiresAt }]
+export async function cancelFixedSchedule(ruleIds, progress = []) {
+  const pending = [...progress];
+  try {
+    for (const ruleId of ruleIds) {
+      if (pending.some((p) => p.ruleId === ruleId)) continue;
+      const res = await request('DELETE', `/rules/${ruleId}`);
+      pending.push(res.pendingChange ? pendingOf(res.pendingChange) : { id: null, ruleId, approvableFrom: 0, expiresAt: Infinity });
+    }
+    return pending;
+  } catch (e) {
+    e.progress = pending;
+    throw e;
+  }
+}
+
+// 反映待ちの変更の一覧（期限切れは含まない）
+export async function fetchPendingChanges() {
+  return (await request('GET', '/pending-changes')).map(pendingOf);
+}
+
+// 反映待ちの変更を承認して反映する（approvableFrom より前は 409 NOT_APPROVABLE_YET）
+export async function approvePendingChange(id) {
+  return request('POST', `/pending-changes/${id}/approve`);
+}
+
+const pendingOf = (p) => ({
+  id: p.id,
+  ruleId: p.subject?.type === 'rule' ? p.subject.ruleId : null,
+  approvableFrom: Date.parse(p.approvableFrom),
+  expiresAt: Date.parse(p.expiresAt),
+});
+
 // アプリをサーバーの target にする
 function targetFor(app, options) {
   const lower = app.name.toLowerCase();
@@ -182,12 +271,27 @@ const MOCK_CATALOG = {
   line: { displayName: 'LINE', domains: ['line.me', 'line-apps.com', 'line-scdn.net'] },
 };
 const MOCK_DOMAIN = /^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/; // cf-rules と同じドメインの形
+// 一時解除の設定の初期値（仕様書の例と同じ。実際の初期値は未確認）。これより緩い設定は反映待ちになる
+const MOCK_EMPTY = {
+  rules: [],
+  settings: { unlock: { unlockMinutes: 10, unlocksPerDay: 2, delayedUnlockMinutes: 5 }, approvalExpiryHours: 24 },
+  pending: [],
+  unlocks: [],
+};
+
+// 開発用（モックの時だけ）: 反映待ちの変更を、今すぐ承認できるようにする（翌朝まで待たずに試すため）
+export function devMakeApprovable() {
+  if (!IS_MOCK) return;
+  const db = loadMock();
+  db.pending.forEach((p) => (p.approvableFrom = isoWithOffset(Date.now() - 60_000)));
+  saveMock(db);
+}
 
 const loadMock = () => {
   try {
-    return JSON.parse(localStorage.getItem(MOCK_KEY)) ?? { rules: [] };
+    return { ...MOCK_EMPTY, ...JSON.parse(localStorage.getItem(MOCK_KEY)) };
   } catch {
-    return { rules: [] };
+    return { ...MOCK_EMPTY };
   }
 };
 const saveMock = (db) => {
@@ -227,11 +331,114 @@ function mockHandle(method, path, body) {
   const now = Date.now();
   const running = (r) => r.timerEndsAt && Date.parse(r.timerEndsAt) > now;
   const findRule = (id) => db.rules.find((r) => r.id === id) ?? fail(404, 'NOT_FOUND', '見つかりません', { ruleId: id });
+  // 期限を過ぎた反映待ちは消える
+  db.pending = db.pending.filter((p) => Date.parse(p.expiresAt) > now);
+  // 翌朝（05:00。仕様では時刻は未決定）から承認できる反映待ちを作る
+  const makePending = (subject, action, before, after) => {
+    const d = new Date(now);
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 5).getTime();
+    const p = {
+      id: `pc_${Math.random().toString(16).slice(2, 8)}`,
+      subject,
+      action,
+      before,
+      after,
+      requestedAt: isoWithOffset(now),
+      approvableFrom: isoWithOffset(from),
+      expiresAt: isoWithOffset(from + db.settings.approvalExpiryHours * 3_600_000),
+    };
+    // 1つのルール（と設定）につき反映待ちは1件。前のものは置き換える
+    db.pending = [...db.pending.filter((q) => JSON.stringify(q.subject) !== JSON.stringify(subject)), p];
+    return p;
+  };
+  const currentUnlock = () => db.unlocks.find((u) => !u.cancelledAt && Date.parse(u.endsAt) > now) ?? null;
+  const unlockView = (u) => ({
+    ...u,
+    status: u.cancelledAt ? 'cancelled' : Date.parse(u.startsAt) > now ? 'waiting' : Date.parse(u.endsAt) > now ? 'active' : 'ended',
+  });
 
   if (method === 'GET' && path === '/options') {
     return { apps: MOCK_CATALOG, categories: {}, webPushPublicKey: null };
   }
-  if (method === 'GET' && path === '/rules') return db.rules;
+  if (method === 'GET' && path === '/rules') {
+    saveMock(db);
+    return db.rules.map((r) => ({ ...r, pendingChange: db.pending.find((p) => p.subject.ruleId === r.id) ?? null }));
+  }
+  if (method === 'GET' && path === '/settings') {
+    return { ...db.settings, pendingChange: db.pending.find((p) => p.subject.type === 'settings') ?? null };
+  }
+  if (method === 'PATCH' && path === '/settings') {
+    // classify_unlock_settings_change と同じ判定（長さ・回数が同じか少なく、待ち時間が同じか長いならすぐ）
+    const o = db.settings.unlock;
+    const n = body.unlock;
+    const stricter =
+      n.unlockMinutes <= o.unlockMinutes &&
+      n.unlocksPerDay <= o.unlocksPerDay &&
+      (n.delayedUnlockMinutes ?? 0) >= (o.delayedUnlockMinutes ?? 0);
+    if (stricter) {
+      db.settings = { ...db.settings, unlock: n };
+      db.pending = db.pending.filter((p) => p.subject.type !== 'settings');
+      saveMock(db);
+      return { applyMode: 'immediate', settings: { ...db.settings, pendingChange: null }, pendingChange: null };
+    }
+    const p = makePending({ type: 'settings' }, 'update', { unlock: o }, { unlock: n });
+    saveMock(db);
+    return { applyMode: 'pending', settings: { ...db.settings, pendingChange: p }, pendingChange: p };
+  }
+  if (method === 'GET' && path === '/pending-changes') {
+    saveMock(db);
+    return db.pending;
+  }
+  const approveMatch = path.match(/^\/pending-changes\/([^/]+)\/approve$/);
+  if (approveMatch && method === 'POST') {
+    const p = db.pending.find((q) => q.id === approveMatch[1]) ??
+      fail(410, 'PENDING_CHANGE_EXPIRED', '承認の期限を過ぎたため、この変更は取り消されました');
+    if (Date.parse(p.approvableFrom) > now) {
+      fail(409, 'NOT_APPROVABLE_YET', 'この変更は明日の朝から承認できます', { approvableFrom: p.approvableFrom });
+    }
+    db.pending = db.pending.filter((q) => q !== p);
+    if (p.subject.type === 'settings') db.settings = { ...db.settings, ...p.after };
+    else if (p.action === 'delete') db.rules = db.rules.filter((r) => r.id !== p.subject.ruleId);
+    saveMock(db);
+    return { applyMode: 'immediate', rule: null, settings: null, pendingChange: null };
+  }
+  if (method === 'GET' && path === '/unlocks') {
+    const today = new Date(now).setHours(0, 0, 0, 0);
+    const used = db.unlocks.filter((u) => Date.parse(u.requestedAt) >= today).length;
+    const perDay = db.settings.unlock.unlocksPerDay;
+    const current = currentUnlock();
+    return {
+      unlocksPerDay: perDay,
+      usedToday: used,
+      remainingToday: Math.max(0, perDay - used),
+      resetAt: isoWithOffset(today + 86_400_000),
+      current: current && unlockView(current),
+    };
+  }
+  if (method === 'POST' && path === '/unlocks') {
+    if (currentUnlock()) fail(409, 'UNLOCK_IN_PROGRESS', '一時解除が進行中です');
+    const today = new Date(now).setHours(0, 0, 0, 0);
+    const used = db.unlocks.filter((u) => Date.parse(u.requestedAt) >= today).length;
+    if (used >= db.settings.unlock.unlocksPerDay) {
+      fail(429, 'UNLOCK_LIMIT_REACHED', '今日の一時解除の回数を使い切りました', {
+        resetAt: isoWithOffset(today + 86_400_000),
+        unlocksPerDay: db.settings.unlock.unlocksPerDay,
+      });
+    }
+    const { unlockMinutes, delayedUnlockMinutes } = db.settings.unlock;
+    const startsAt = now + (delayedUnlockMinutes ?? 0) * 60_000;
+    const u = {
+      id: `unl_${Math.random().toString(16).slice(2, 8)}`,
+      ruleIds: body?.ruleIds ?? null,
+      requestedAt: isoWithOffset(now),
+      startsAt: isoWithOffset(startsAt),
+      endsAt: isoWithOffset(startsAt + unlockMinutes * 60_000),
+      cancelledAt: null,
+    };
+    db.unlocks.push(u);
+    saveMock(db);
+    return unlockView(u);
+  }
   if (method === 'GET' && path === '/status') {
     return {
       now: isoWithOffset(now),
@@ -249,6 +456,13 @@ function mockHandle(method, path, body) {
     };
   }
   if (method === 'POST' && path === '/rules') {
+    if (body.schedule?.type === 'window') {
+      const { start, end, days } = body.schedule;
+      const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+      if (!hhmm.test(start) || !hhmm.test(end) || start === end || !days?.length) {
+        fail(422, 'VALIDATION_ERROR', '入力値が正しくありません', { field: 'schedule' });
+      }
+    }
     const domains = body.target?.domains ?? [];
     const badDomain = domains.find((d) => !MOCK_DOMAIN.test(d));
     if (badDomain) fail(422, 'VALIDATION_ERROR', '入力値が正しくありません', { field: 'target.domains' });
@@ -271,6 +485,18 @@ function mockHandle(method, path, body) {
     return { applyMode: 'immediate', rule };
   }
   const ruleMatch = path.match(/^\/rules\/([^/]+)(\/timer)?$/);
+  if (ruleMatch && method === 'DELETE' && !ruleMatch[2]) {
+    // オンのルールを消すのは反映待ち。オフのルールはすぐ消える
+    const rule = findRule(ruleMatch[1]);
+    if (!rule.enabled) {
+      db.rules = db.rules.filter((r) => r !== rule);
+      saveMock(db);
+      return { applyMode: 'immediate', rule: null, pendingChange: null };
+    }
+    const p = makePending({ type: 'rule', ruleId: rule.id }, 'delete', rule, null);
+    saveMock(db);
+    return { applyMode: 'pending', rule: { ...rule, pendingChange: p }, pendingChange: p };
+  }
   if (ruleMatch && method === 'PATCH' && !ruleMatch[2]) {
     // オンにするのはすぐ反映。モックではそれ以外の変更は扱わない
     const rule = findRule(ruleMatch[1]);

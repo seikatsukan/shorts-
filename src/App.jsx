@@ -6,6 +6,9 @@ import AppSelect from './pages/AppSelect';
 import PurposeSelect from './pages/PurposeSelect';
 import Confirm from './pages/Confirm';
 import Stats from './pages/Stats';
+import ModeSelect from './pages/ModeSelect';
+import FixedSetup from './pages/FixedSetup';
+import FixedHome from './pages/FixedHome';
 import './App.css';
 
 // ログインしていなければ（初めての利用者・ログアウト後）説明ページ、していればメイン画面
@@ -14,10 +17,26 @@ function Entry() {
   return account ? <Navigate to="/home" replace /> : <Onboarding />;
 }
 
-// ログインが必要な画面
-function RequireAccount({ children }) {
-  const { account } = useApp();
-  return account ? children : <Navigate to="/" replace />;
+// ログインと使い方のモードが必要な画面（ログインしていなければ説明ページ、モードが未選択ならモード選択へ）。mode を指定するとそのモードの時だけ（違えばメイン画面へ）
+function RequireMode({ mode: only, children }) {
+  const { account, mode } = useApp();
+  if (!account) return <Navigate to="/" replace />;
+  if (!mode) return <Navigate to="/mode" replace />;
+  if (only && mode !== only) return <Navigate to="/home" replace />;
+  return children;
+}
+
+// メイン画面はモードごとに別
+function HomeByMode() {
+  const { mode } = useApp();
+  return mode === 'fixed' ? <FixedHome /> : <Home />;
+}
+
+// モードを選ぶ画面・固定時間の予定の画面（固定時間を始めた後は開かない）
+function RequireNotFixed({ children }) {
+  const { account, mode } = useApp();
+  if (!account) return <Navigate to="/" replace />;
+  return mode === 'fixed' ? <Navigate to="/home" replace /> : children;
 }
 
 export default function App() {
@@ -27,11 +46,13 @@ export default function App() {
         <div className="app-container">
           <Routes>
             <Route path="/" element={<Entry />} />
-            <Route path="/home" element={<RequireAccount><Home /></RequireAccount>} />
-            <Route path="/select-app" element={<RequireAccount><AppSelect /></RequireAccount>} />
-            <Route path="/select-purpose" element={<RequireAccount><PurposeSelect /></RequireAccount>} />
-            <Route path="/confirm" element={<RequireAccount><Confirm /></RequireAccount>} />
-            <Route path="/stats" element={<RequireAccount><Stats /></RequireAccount>} />
+            <Route path="/mode" element={<RequireNotFixed><ModeSelect /></RequireNotFixed>} />
+            <Route path="/fixed-setup" element={<RequireNotFixed><FixedSetup /></RequireNotFixed>} />
+            <Route path="/home" element={<RequireMode><HomeByMode /></RequireMode>} />
+            <Route path="/select-app" element={<RequireMode mode="timer"><AppSelect /></RequireMode>} />
+            <Route path="/select-purpose" element={<RequireMode mode="timer"><PurposeSelect /></RequireMode>} />
+            <Route path="/confirm" element={<RequireMode mode="timer"><Confirm /></RequireMode>} />
+            <Route path="/stats" element={<RequireMode mode="timer"><Stats /></RequireMode>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

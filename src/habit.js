@@ -72,7 +72,8 @@ export const hasTicket = (habit, now) => !habit.ticketsUsed[weekKey(now)];
 export const ticketCount = (habit, now) => (hasTicket(habit, now) ? 1 : 0) + (habit.extraTickets ?? 0);
 
 // 1日分の結果を反映する。event は画面に知らせる内容（無ければ null）
-export function applyDay(habit, ok, day) {
+// tickets: false にするとお休みチケットを使わない（固定時間モードにはお休みチケットが無い）
+export function applyDay(habit, ok, day, { tickets = true } = {}) {
   const h = { ...habit, ticketsUsed: { ...habit.ticketsUsed } };
   let event = null;
   if (ok) {
@@ -89,10 +90,10 @@ export function applyDay(habit, ok, day) {
   } else if (h.failing) {
     // 失敗が続いている途中：これ以上は下がらない
     event = { type: 'miss', day, continued: true };
-  } else if (!h.ticketsUsed[weekKey(day)]) {
+  } else if (tickets && !h.ticketsUsed[weekKey(day)]) {
     h.ticketsUsed[weekKey(day)] = day;
     event = { type: 'ticket', day, kind: 'weekly' };
-  } else if ((h.extraTickets ?? 0) > 0) {
+  } else if (tickets && (h.extraTickets ?? 0) > 0) {
     h.extraTickets -= 1;
     event = { type: 'ticket', day, kind: 'extra' };
   } else {

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { coinsFor } from '../data/apps';
 import { fetchRecords, saveRecord } from '../storage';
 import { uuid } from '../utils';
+import { useFixedMode } from './useFixedMode';
 import {
   MAX_EXTRA_TICKETS, TICKET_PRICE, applyDay, fetchRangeFor, mergeRanges, minutesByDay, newHabit, settle,
 } from '../habit';
@@ -21,6 +22,11 @@ const initialState = {
 };
 
 const emptyUser = {
+  // 使い方のモード: 'timer'（自分でロック） / 'fixed'（固定時間で自動ロック） / null（まだ選んでいない）
+  // 2つのモードはコイン・スライムの成長も別。固定時間をキャンセルした時は、反映された後にもう一度選ぶ
+  mode: null,
+  fixed: null, // 固定時間モードの状態（useFixedMode.js）
+  fixedDraft: null, // 固定時間の予定を決めている途中の内容（useFixedMode.js）
   coins: 0, // 持っているコイン（ロックをやりきるともらえる。お休みチケットを買うのに使う）
   habit: null, // 毎日の目標と色の段階（habit.js の newHabit の形）。目標を決めるまでは null
   // まだ画面で知らせていない判定の結果（habit.js の applyDay の event）。
@@ -171,15 +177,19 @@ export function AppProvider({ children }) {
     return () => clearInterval(id);
   }, [evaluateHabit, habitGoal]);
 
+  const fixedMode = useFixedMode({ user, updateUser, now });
+
   const value = useMemo(
     () => ({
       account: state.account,
       tutorialSeen: state.tutorialSeen,
       userId,
       ...user,
+      mode: user.mode ?? null,
       now,
       draft,
       completed,
+      ...fixedMode,
 
       markTutorialSeen: () => setState((s) => (s.tutorialSeen ? s : { ...s, tutorialSeen: true })),
       logIn: (account) => setState((s) => ({ ...s, account, tutorialSeen: true })),
@@ -293,7 +303,7 @@ export function AppProvider({ children }) {
         },
       }),
     }),
-    [state.account, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit],
+    [state.account, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit, fixedMode],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

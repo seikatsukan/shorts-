@@ -1080,6 +1080,7 @@ ul {
 /* 開発中だけのテスト用ボタン */
 .dev-tools {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
   margin: 2px 0 12px;
@@ -1332,4 +1333,332 @@ ul {
 }
 .habit-report .primary-button {
   width: 100%;
+}
+
+/* ---- 使い方のモードを選ぶ ---- */
+.mode-screen {
+  padding-top: 40px;
+}
+.mode-card {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  margin-bottom: 14px;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.mode-card:active {
+  border-color: var(--accent);
+  transform: scale(0.99);
+}
+.mode-icon {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-sub);
+}
+.mode-body strong {
+  font-size: 17px;
+  color: var(--text);
+}
+.mode-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mode-tags span {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.mode-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ---- 固定時間の予定 ---- */
+.fixed-setup {
+  padding-bottom: 120px;
+}
+.suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0;
+  text-align: left;
+}
+.suggest-row + .suggest-row {
+  border-top: 1px solid var(--border);
+}
+.suggest-row strong {
+  display: block;
+  font-size: 15px;
+}
+.suggest-note {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+.entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.entry-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 8px 12px 14px;
+}
+.entry-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+.entry-when {
+  font-size: 15px;
+}
+.entry-apps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.entry-apps .app-tile {
+  border-radius: 6px;
+}
+.entry-more {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+.entry-actions {
+  display: flex;
+  color: var(--text-sub);
+}
+.add-entry {
+  width: 100%;
+  margin-bottom: 16px;
+}
+.entry-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-sub);
+  margin: 14px 0 8px;
+}
+.entry-section .text-button {
+  padding: 0;
+  font-size: 13px;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chip {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+}
+.chip.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.day-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.day-chip {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  font-size: 15px;
+  font-weight: 700;
+}
+.day-chip.sat {
+  color: #2a78d6;
+}
+.day-chip.sun {
+  color: var(--danger);
+}
+.day-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.time-row input,
+.time-end-label {
+  flex: 1;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+.time-end-label {
+  font-size: 14px;
+}
+.chip.end-of-day {
+  margin-bottom: 4px;
+}
+.app-grid.compact {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px 2px;
+  margin-bottom: 18px;
+}
+.app-grid.compact .check-badge {
+  font-size: 11px;
+}
+.confirm-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.confirm-entries li {
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+.confirm-entries span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-sub);
+  margin-top: 2px;
+}
+.rule-notes {
+  list-style: disc;
+  padding-left: 20px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-sub);
+}
+.rule-notes strong {
+  color: var(--text);
+}
+.primary-button.full.danger {
+  background: var(--danger);
+}
+
+/* ---- 固定時間のメイン画面 ---- */
+.notice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  background: #fff6e5;
+  border: 1px solid #f3dcae;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.notice-card .text-button {
+  padding: 0;
+  align-self: flex-end;
+}
+.fixed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.fixed-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.fixed-list li.ended {
+  opacity: 0.45;
+}
+.fixed-list li.active .fixed-time {
+  font-weight: 800;
+}
+.fixed-time {
+  min-width: 118px;
+  font-variant-numeric: tabular-nums;
+}
+.fixed-status {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fixed-list li.active .fixed-status {
+  color: #e9a23b;
+}
+.unlock-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.unlock-status {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.secondary-button.small {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.secondary-button:disabled {
+  opacity: 0.3;
+}
+.fixed-lock-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
 }
