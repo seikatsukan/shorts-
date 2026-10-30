@@ -1,7 +1,8 @@
 # SNS Blocker Web
 
-SNS などのアプリの利用を、スマホから PC サーバーに頼んで一定時間ロックする Web アプリ（スマホ向け）。
-ロックをやりきるとコインが貯まり、キャラクター（スライム）が進化する。
+SNS などのアプリの利用を、スマホからサーバー（cf-rules-api）に頼んで一定時間ブロックする Web アプリ（スマホ向け）。
+ブロックはサーバーがユーザーの Cloudflare Zero Trust に反映し、スマホの 1.1.1.1 アプリ（WARP）の通信で効く。
+ロックをやりきるとコインが貯まり、毎日の目標を続けるとキャラクター（スライム）の色が変わる。
 
 ## 起動方法
 
@@ -10,13 +11,19 @@ npm install
 npm run dev
 ```
 
-PC サーバーにつなぐ場合は、プロジェクト直下に `.env` を作って PC サーバーの URL を書く。
+`.env` が無い間は、**モック**（ブラウザ内の仮サーバー。下の「サーバーとのやりとり」の決まりどおりに応答する）で動く。
+
+本物のサーバーにつなぐ場合は、プロジェクト直下に `.env` を作って次の2行を書く。
 
 ```
-VITE_LOCK_SERVER_URL=http://192.168.x.x:8000
+VITE_API_BASE=/api
+API_PROXY_TARGET=http://localhost:8787
 ```
 
-`.env` が無い（URL 未設定）の間は、**モック**（ブラウザ内の仮サーバー）で動く。
+- `VITE_API_BASE`: API の場所。仕様どおり画面と同じオリジンの `/api` 以下
+- `API_PROXY_TARGET`: 開発サーバー（Vite）が `/api` と `/auth` を流す先。手元の cf-rules-api（`uv run pywrangler dev`）なら `http://localhost:8787`、デプロイ済みのものはその URL（バックエンド担当に聞く）（[`vite.config.js`](vite.config.js)）
+- ログインは Cookie（`session`）で続くので、画面と API を同じオリジンに見せる必要がある（cf-rules-api の README の決まり）
+- **ログイン画面はまだサーバーにつないでいない**。今のサーバーは偽の Google ログインだけなので、ブラウザで `http://localhost:5173/auth/google/start` を一度開くと、テスト用のユーザーでログインした状態（Cookie）になる
 
 ### スマホで試す
 
@@ -32,120 +39,82 @@ http で開いても動くように、ID の生成などは https 専用の機�
 ## 全体の流れ
 
 ```
-スマホ（このアプリ）                     PC サーバー                 保存先（未定）
+スマホ（このアプリ）                     サーバー（cf-rules-api）        保存先（未定）
  ① アプリ・時間・目的を選ぶ
- ② スタート ───── ロック依頼 ─────────▶ ロック開始
-             ◀──── 開始/終了時刻 ─────
+ ② スタート ── アプリごとにタイマーを開始 ─▶ Cloudflare に反映
+             ◀──── 終わる時刻 ─────────
  ③ 記録を送る ──────────────────────────────────────────────▶ 保存
- ④ カウントダウン表示（PC の時刻基準）
+ ④ カウントダウン表示（サーバーの時刻基準）
  ⑤ 終了 → 「おめでとう！」＋コイン付与
  ⑥ まとめ画面 ◀──────────── 期間を指定して記録を取得 ─────────── 
 ```
 
-- 一度始めたロックは**キャンセルできない**。そのため、スマホからは解除の依頼は送らない。
-- 目的は PC サーバーには送らず、保存先にだけ送る。
+- 一度始めたロックは**キャンセルできない**。スマホからは止める操作を送らない（サーバーでも、ルールを緩める変更は翌朝以降に本人が承認するまで反映されない）。
+- 目的はサーバーには送らず、保存先にだけ送る。
 
 ---
 
-## PC サーバーとのやりとり
+## サーバーとのやりとり
 
 実装: [`src/api.js`](src/api.js)
 
-HTTP の API 通信。JSON を POST して、JSON で返してもらう。
+取り決めは `seikatsukan/api-spec` の `openapi.yaml`（v0.2.0 の案）。**バックエンドは変えられないので、こちらが合わせる。**
 
-### ロック開始 `POST {VITE_LOCK_SERVER_URL}/lock`
-
-#### スマホ → PC（送る内容）
-
-| 項目 | 型 | 内容 |
-|---|---|---|
-| `apps` | 配列 | ロックするアプリの一覧（1 個以上） |
-| `apps[].name` | 文字列 | アプリ名（例: `"YouTube"`） |
-| `apps[].minutes` | 数値 | 制限時間（分）。20 / 30 / 60、またはカスタムで入力した 1〜1440 |
-| `apps[].domain` | 文字列 | **カスタムアプリの時だけ**付く。正式なドメイン（例: `"line.me"`） |
-
-```json
-{
-  "apps": [
-    { "name": "YouTube", "minutes": 30 },
-    { "name": "LINE", "minutes": 60, "domain": "line.me" }
-  ]
-}
-```
-
-- デフォルトのアプリ（YouTube / TikTok / Instagram / X / Facebook / Threads）は**名前だけ**送る。ドメインなどは PC サーバーが名前から特定する。
-- カスタムアプリのドメインは、`https://` や `www.`、パスを取り除いた形で送る（例: `https://www.line.me/ja/` → `line.me`）。
-- 1 回のスタートで複数のアプリをまとめて送る。アプリごとに制限時間が違うこともある。
-
-#### PC → スマホ（成功した時）
-
-| 項目 | 型 | 内容 |
-|---|---|---|
-| `success` | 真偽値 | `true` |
-| `serverTime` | 日時文字列 | PC サーバーの現在時刻 |
-| `apps` | 配列 | **アプリごと**の開始・終了時刻 |
-| `apps[].name` | 文字列 | 送られてきた `name` をそのまま返す |
-| `apps[].startTime` | 日時文字列 | 開始時刻 |
-| `apps[].endTime` | 日時文字列 | 終了時刻 |
-
-```json
-{
-  "success": true,
-  "serverTime": "2026-10-27T12:00:00.500Z",
-  "apps": [
-    { "name": "YouTube", "startTime": "2026-10-27T12:00:00.500Z", "endTime": "2026-10-27T12:30:00.500Z" },
-    { "name": "LINE",    "startTime": "2026-10-27T12:00:00.500Z", "endTime": "2026-10-27T13:00:00.500Z" }
-  ]
-}
-```
-
-- 日時はすべて ISO 8601 形式（`2026-10-27T12:00:00.500Z` や `2026-10-27T21:00:00+09:00`）。
-- スマホはこの時刻を元にカウントダウンを表示する。スマホの時計がずれていても PC の時刻に合わせられるよう、`serverTime` との差でずれを補正する（通信にかかった時間の半分も差し引く）。
-- あるアプリの `startTime` / `endTime` が欠けていた場合でも、エラーにはしない（PC 側ではもうロックが始まっているため）。その時は `serverTime` に制限時間を足した時刻を終了時刻とする。
-
-#### PC → スマホ（対応していないアプリがあった時）
-
-カスタムアプリが PC サーバーで対応していない、または正式な名前・ドメインではない時に返す。
-**この時はどのアプリもロックを開始しないこと。**（一部だけ始まると、スマホから取り消せないため）
-
-```json
-{
-  "success": false,
-  "error": "UNSUPPORTED_APP",
-  "unsupportedApps": ["LINE"]
-}
-```
-
-| 項目 | 内容 |
+| 決まり | 内容 |
 |---|---|
-| `error` | `"UNSUPPORTED_APP"` 固定 |
-| `unsupportedApps` | 対応していないアプリの `name`（送られてきたものをそのまま） |
+| 場所 | 画面と同じオリジンの `/api` 以下 |
+| ログイン | `/auth` 以下で付く Cookie `session`（`fetch` が自動で送る）。無い・切れている時は 401 `UNAUTHORIZED` |
+| 項目名・時刻 | JSON は camelCase、時刻は `2026-10-30T21:30:00+09:00` の形 |
+| エラー | 常に `{ "code", "message", "details" }`。`message` はそのまま画面に出せる日本語なので、そのまま表示する |
 
-- HTTP ステータスは 200 でも 4xx（400 / 422 など）でもよい。
-- スマホは「対応していないか、正式な名前ではありません」と表示し、アプリ選択画面に戻る。該当アプリの名前・ドメインの修正画面が開くので、利用者は直してから送り直す。
+### ロックのしかた（アプリごとに集中タイマーのルールを1つ持ち、使い回す）
 
-#### PC → スマホ（その他のエラー）
+サーバーには「今からこのアプリを○分」という API は無く、「ルール（対象と時間の決め方）を作る」「timer のルールを始める」が別々にある。そこでアプリごとに timer のルールを1つ作り、ロックのたびにそのルールを選んだ分数で始める。
 
-```json
-{ "success": false, "message": "画面に表示するエラー文" }
-```
+1. `GET /options`・`GET /rules`・`GET /status` を同時に呼び、アプリ ID・今あるルール・サーバーの現在時刻を取る
+2. 選んだアプリのうち、**ロック中（`timerEndsAt` が未来）のものが1つでもあれば何も始めずにエラー**。動いているタイマーをもう一度始めた時の動きは仕様に無いため（画面でもロック中のアプリは選べない。これは別の端末で始めていた時のため）
+3. まだルールが無いアプリだけ `POST /rules` で作る。オフになっているルールは `PATCH /rules/{ruleId}` で `{"enabled": true}` にする（どちらも「厳しくする変更」なのですぐ反映）
+4. アプリごとに `POST /rules/{ruleId}/timer` を `{"durationMinutes": 選んだ分数}` で呼ぶ。返ってきたルールの `timerEndsAt` が終わる時刻
 
-- `message` はそのまま画面に表示される。無い場合は「サーバーがロックを受け付けませんでした」。
-- JSON を返さずに HTTP エラー（500 など）になった場合は「サーバーエラー (500)」と表示する。
-- 15 秒以内に応答が無い時は「サーバーから応答がありません」と表示する。
-- どのエラーでも、利用者は確認画面から「もう一度試す」を押せる。
+- **ルールは消さない**。消すのは「緩める変更」で翌朝以降の承認が要るため、毎回作って消す形にはしない。終わったタイマーのルールは、そのアプリを次にロックする時にまた使う
+- 1回のスタートで複数のアプリを選べ、アプリごとに時間が違ってもよい（ルールがアプリごとなので、それぞれ別のタイマーになる）
+- 同じアプリかどうかは、ルールの名前ではなく `target` の中身（`apps` / `domains`）で見分ける
 
-### PC サーバーを作る時の注意
+### アプリの指定（`target`）
 
-- **CORS**: スマホのブラウザから別のアドレスの PC へ送るので、PC サーバー側で CORS を許可する（`Access-Control-Allow-Origin`、`Content-Type` ヘッダーと `POST` / `OPTIONS` を許可）。
-- **HTTPS**: Web アプリを `https://` で公開すると、`http://` の PC には送信できない（ブラウザがブロックする）。LAN 内で試す間は Web アプリも `http://` で配信する。
+サーバーのカタログ（`GET /options` の `apps`）にあるアプリは **ID** で、無いアプリは **ドメイン** で送る。
+
+| アプリ | 送る `target` |
+|---|---|
+| YouTube / TikTok / Instagram / X | `{"type": "sites", "apps": ["youtube"], "domains": [], "categoryIds": []}`（ID は `displayName` が同じものを探す） |
+| Facebook / Threads（カタログに無い） | `{"type": "sites", "apps": [], "domains": ["facebook.com"], "categoryIds": []}`（[`apps.js`](src/data/apps.js) の `DEFAULT_APPS` のドメイン） |
+| カスタムアプリ | `{"type": "sites", "apps": [], "domains": ["line.me"], "categoryIds": []}`（入力されたドメイン。`https://`・`www.`・パスを取り除いた形） |
+
+### 時刻
+
+- カウントダウンは `timerEndsAt` を終わる時刻、そこから分数を引いた時刻を始まった時刻として表示する
+- スマホの時計がずれていてもサーバーの時刻に合わせられるよう、`GET /status` の `now` との差でずれを補正する（通信にかかった時間の半分も差し引く）
+
+### うまくいかなかった時
+
+| 場面 | 画面 |
+|---|---|
+| ロック中のアプリが含まれていた | 何も始めずに「○○ はすでにロック中です」 |
+| カスタムアプリのルールを作る時に 422 `VALIDATION_ERROR` | 何も始めずにアプリ選択画面へ戻り、そのアプリの名前・ドメインの修正画面を開く |
+| **一部のアプリだけタイマーを始められた** | 始められたアプリはロックとして登録する（始めたタイマーは止められないため）。確認画面には始められなかったアプリだけ残し、「○○ はロックを始めました。△△ は始められませんでした（理由）」と出して「もう一度試す」を押せるようにする |
+| 1つも始められなかった | サーバーの `message`（例: 409 `CLOUDFLARE_NOT_CONNECTED` の「Cloudflare と連携してください」）を出して「もう一度試す」 |
+| JSON の無い HTTP エラー | 「サーバーエラー (500)」 |
+| 15 秒以内に応答が無い／つながらない | 「サーバーから応答がありません」／「サーバーに接続できません」 |
 
 ### モックの動き
 
-`VITE_LOCK_SERVER_URL` が未設定の時は、1.2 秒待ってから上の形式で返す。
+`VITE_API_BASE` が未設定の時は、[`src/api.js`](src/api.js) の中のモックが上で使うエンドポイントに仕様どおりの形で答える（1回 0.25 秒）。
 
-- デフォルトのアプリはすべて対応済みとして扱う。
-- カスタムアプリは、ドメインが `line.me` / `discord.com` / `twitch.tv` / `reddit.com` / `pinterest.com` / `nicovideo.jp` 以外なら `UNSUPPORTED_APP` を返す（エラー表示の確認用）。
+- カタログは cf-rules の `get_catalog()` と同じ（X・YouTube・Instagram・TikTok・LINE）
+- ルールは `localStorage` の `sns-blocker:mock-api` に保存する（再読み込みしても、動いているタイマーが残る）
+- ドメインの形が cf-rules の決まり（英小文字・数字・`-`・`_` を `.` でつないだもの）に合わない時は 422 `VALIDATION_ERROR`
+- 動いているタイマーをもう一度始めると 409 `TIMER_RUNNING`（仕様に無いので仮。アプリからは呼ばない）
+- **一部だけ失敗する場面を試す**: `localStorage` の `sns-blocker:mock-api-fail` に `["Facebook"]` のようにルール名を入れると、そのルールのタイマーを始める時に 502 `CLOUDFLARE_API_ERROR` を返す
 
 ---
 
@@ -158,14 +127,14 @@ HTTP の API 通信。JSON を POST して、JSON で返してもらう。
 
 ### 記録を送る `saveRecord(record)`
 
-- **いつ**: PC サーバーから成功が返ってきた時（ロック開始時）。ロックはキャンセルできないので、開始時点で確定とする。
+- **いつ**: サーバーでタイマーを始められた時（ロック開始時）。ロックはキャンセルできないので、開始時点で確定とする。
 - **単位**: ロックを 1 回スタートするごとに 1 件。複数アプリをまとめてロックした時は `apps` に並ぶ。
 
 | 項目 | 型 | 内容 |
 |---|---|---|
 | `id` | 文字列 | 記録 ID（スマホで作る UUID） |
 | `userId` | 文字列 | アカウント ID（下記） |
-| `startedAt` | 日時文字列 | 開始日時（PC サーバーが返した開始時刻） |
+| `startedAt` | 日時文字列 | 開始日時（サーバーのタイマーの開始時刻） |
 | `apps` | 配列 | ロックしたアプリ |
 | `apps[].name` | 文字列 | アプリ名 |
 | `apps[].minutes` | 数値 | 制限時間（分） |
@@ -250,135 +219,103 @@ HTTP の API 通信。JSON を POST して、JSON で返してもらう。
 
 ## JSON の例（場面ごと）
 
-日時は分かりやすいように日本時間（`+09:00`）で書いている。UTC（`Z`）で書いてもよい。
+日時は日本時間（`+09:00`）で書いている。ルール ID などはサーバーが付ける値の例。
 
-### 例 1: デフォルトのアプリだけをロック（目的あり）
+### 例 1: 初めて YouTube と Facebook をロック（目的あり）
 
-YouTube を 30 分、TikTok を 20 分、目的「勉強」でスタートした場合。
+YouTube を 30 分、Facebook を 20 分、目的「勉強」でスタートした場合。どちらもまだルールが無い。
 
-**① スマホ → PC サーバー**（`POST /lock`）
+**① スマホ → サーバー**（`GET /options`・`GET /rules`・`GET /status` を同時に）
 
-```json
-{
-  "apps": [
-    { "name": "YouTube", "minutes": 30 },
-    { "name": "TikTok", "minutes": 20 }
-  ]
-}
-```
-
-**② PC サーバー → スマホ**（成功）
+`GET /options` の応答（抜粋）
 
 ```json
-{
-  "success": true,
-  "serverTime": "2026-10-27T21:00:00.500+09:00",
-  "apps": [
-    { "name": "YouTube", "startTime": "2026-10-27T21:00:00.500+09:00", "endTime": "2026-10-27T21:30:00.500+09:00" },
-    { "name": "TikTok",  "startTime": "2026-10-27T21:00:00.500+09:00", "endTime": "2026-10-27T21:20:00.500+09:00" }
-  ]
-}
+{ "apps": { "youtube": { "displayName": "YouTube", "domains": ["youtube.com", "youtu.be"] } }, "categories": {}, "webPushPublicKey": null }
 ```
 
-**③ スマホ → 保存先**（記録を送る）
+`GET /rules` の応答は `[]`、`GET /status` の応答（抜粋）は次のとおり。
+
+```json
+{ "now": "2026-10-30T21:00:00+09:00", "timezone": "Asia/Tokyo", "blockingRuleIds": [] }
+```
+
+**② スマホ → サーバー**（ルールを作る。`POST /rules` を1つずつ）
+
+```json
+{ "name": "YouTube", "schedule": { "type": "timer", "durationMinutes": 30 }, "target": { "type": "sites", "apps": ["youtube"], "domains": [], "categoryIds": [] } }
+```
+
+```json
+{ "name": "Facebook", "schedule": { "type": "timer", "durationMinutes": 20 }, "target": { "type": "sites", "apps": [], "domains": ["facebook.com"], "categoryIds": [] } }
+```
+
+応答は `{ "applyMode": "immediate", "rule": { "id": "rule_3f9a1c", ... } }`。
+
+**③ スマホ → サーバー**（タイマーを始める）
+
+`POST /rules/rule_3f9a1c/timer`
+
+```json
+{ "durationMinutes": 30 }
+```
+
+応答（ルール。抜粋）
+
+```json
+{ "id": "rule_3f9a1c", "name": "YouTube", "enabled": true, "schedule": { "type": "timer", "durationMinutes": 30 }, "timerEndsAt": "2026-10-30T21:30:00+09:00", "pendingChange": null }
+```
+
+Facebook も同じように `POST /rules/{Facebook のルール ID}/timer` に `{"durationMinutes": 20}` を送る。
+
+**④ スマホ → 保存先**（記録を送る）
 
 ```json
 {
   "id": "6f1c2a9e-3b7d-4e2a-9c41-0a8f5d2b7e10",
   "userId": "b7cb565a-d045-44d3-a2cf-8870fa536611",
-  "startedAt": "2026-10-27T21:00:00.500+09:00",
+  "startedAt": "2026-10-30T21:00:00.000+09:00",
   "apps": [
     { "name": "YouTube", "minutes": 30 },
-    { "name": "TikTok", "minutes": 20 }
+    { "name": "Facebook", "minutes": 20 }
   ],
   "purpose": "勉強"
 }
 ```
 
-### 例 2: カスタムのアプリを含めてロック（目的はスキップ）
+### 例 2: 次の日にまた YouTube をロック（ルールを使い回す）
 
-Instagram を 60 分、カスタムで追加した LINE（`line.me`）を 45 分、目的なしでスタートした場合。
+YouTube を 60 分、カスタムで追加した LINE（`line.me`）を 45 分、目的なしでスタートした場合。
 
-**① スマホ → PC サーバー**（カスタムの LINE だけ `domain` が付く）
+- `GET /rules` に YouTube のルール（`timerEndsAt` は過去）があるので、作らずに `POST /rules/rule_3f9a1c/timer` に `{"durationMinutes": 60}` を送る
+- LINE はカスタムなのでドメインで探す。まだ無いので `POST /rules` で `"target": {"type": "sites", "apps": [], "domains": ["line.me"], "categoryIds": []}` のルールを作ってから始める
+- 保存先には `"purpose": null` で送る
 
-```json
-{
-  "apps": [
-    { "name": "Instagram", "minutes": 60 },
-    { "name": "LINE", "minutes": 45, "domain": "line.me" }
-  ]
-}
-```
+### 例 3: ロック中のアプリが含まれていた
 
-**② PC サーバー → スマホ**（成功）
+YouTube のタイマーが別の端末で始まっていた（`GET /rules` の YouTube のルールの `timerEndsAt` が未来）。
 
-```json
-{
-  "success": true,
-  "serverTime": "2026-10-28T13:15:02.000+09:00",
-  "apps": [
-    { "name": "Instagram", "startTime": "2026-10-28T13:15:02.000+09:00", "endTime": "2026-10-28T14:15:02.000+09:00" },
-    { "name": "LINE",      "startTime": "2026-10-28T13:15:02.000+09:00", "endTime": "2026-10-28T14:00:02.000+09:00" }
-  ]
-}
-```
+→ ルールを作ることもタイマーを始めることもせず、「YouTube はすでにロック中です」と出す。保存先には何も送らない。
 
-**③ スマホ → 保存先**（目的をスキップしたので `purpose` は `null`）
+### 例 4: 一部のアプリだけ始められなかった
+
+YouTube は始められたが、Facebook の `POST /rules/{ruleId}/timer` が次のエラーを返した。
 
 ```json
-{
-  "id": "0d3e7b52-8a14-4c6f-b2e9-5f71c0a4d983",
-  "userId": "b7cb565a-d045-44d3-a2cf-8870fa536611",
-  "startedAt": "2026-10-28T13:15:02.000+09:00",
-  "apps": [
-    { "name": "Instagram", "minutes": 60 },
-    { "name": "LINE", "minutes": 45 }
-  ],
-  "purpose": null
-}
+{ "code": "CLOUDFLARE_API_ERROR", "message": "Cloudflare への反映に失敗しました。しばらくしてからもう一度お試しください", "details": { "retryable": true } }
 ```
 
-### 例 3: カスタムのアプリが PC サーバーで対応していない
+→ YouTube はロックとして登録し、保存先にも YouTube だけの記録を送る。確認画面には Facebook だけを残して「YouTube はロックを始めました。Facebook は始められませんでした（Cloudflare への反映に失敗しました。…）」と出す。「もう一度試す」で Facebook だけを始め直す（別の記録になる）。
 
-カスタムで「Hoge」（`hoge-sns.com`）を追加し、YouTube と一緒に送った場合。
+### 例 5: Cloudflare とまだ連携していない
 
-**① スマホ → PC サーバー**
+最初のタイマーを始める時に 409 が返り、1つも始められなかった。
 
 ```json
-{
-  "apps": [
-    { "name": "YouTube", "minutes": 20 },
-    { "name": "Hoge", "minutes": 30, "domain": "hoge-sns.com" }
-  ]
-}
+{ "code": "CLOUDFLARE_NOT_CONNECTED", "message": "Cloudflare と連携してください", "details": null }
 ```
 
-**② PC サーバー → スマホ**（対応していない。YouTube もロックしない）
-
-```json
-{
-  "success": false,
-  "error": "UNSUPPORTED_APP",
-  "unsupportedApps": ["Hoge"]
-}
-```
-
-→ 保存先には何も送らない。スマホはアプリ選択画面に戻り、「Hoge」の名前・ドメインの修正画面を開く。
-
-### 例 4: PC サーバーでその他のエラー
-
-**② PC サーバー → スマホ**
-
-```json
-{
-  "success": false,
-  "message": "PCのブロック設定を書き込めませんでした"
-}
-```
-
-→ 保存先には何も送らない。スマホは `message` を表示し、「もう一度試す」を押せるようにする。
-
-### 例 5: 保存先から記録を取得（まとめ画面）
+→ 「Cloudflare と連携してください」を出し、「もう一度試す」を押せるようにする。保存先には何も送らない。作ったルールはそのまま残り、次に使われる。
+### 例 6: 保存先から記録を取得（まとめ画面）
 
 10 月 26 日（月）〜 11 月 1 日（日）の「今週」を表示する場合。
 
@@ -441,10 +378,10 @@ Instagram を 60 分、カスタムで追加した LINE（`line.me`）を 45 分
 | コイン | **10 分ごとに 1 枚**。1 回のスタートで複数アプリをロックした時は、**一番長い制限時間**で計算する（例: 30 分 + 60 分 → 6 枚）。そのスタートのロックが全部終わった時に付与する。もらったコインは「持っているコイン」になり、**お休みチケットを買うのに使う**（1 枚 🪙10） | [`src/data/apps.js`](src/data/apps.js) `coinsFor` / [`AppContext.jsx`](src/store/AppContext.jsx) |
 | 進化・退化 | 下の「毎日の目標（21日で銀色）」を参照。スライムの**色**で表す（大きさは一定） | [`src/habit.js`](src/habit.js) |
 | 初めての利用者 | ログインしていない時は `/` で説明ページ（PCの準備 → 使い方 → アカウント）を表示する。ログイン中はメイン画面へ。ログインしていないのにメイン画面などを開くと `/` に戻す | [`src/App.jsx`](src/App.jsx) `Entry` / `RequireAccount` |
-| アカウントごとのデータ | コイン・ロック中のアプリ・カスタムアプリ・毎日の目標はアカウントごとに分けて端末に保存する。別のアカウントでログインしても混ざらない。ログアウト中もロックは PC 側で続き、次にログインした時に終了処理（「おめでとう」とコイン付与）をする | [`src/store/AppContext.jsx`](src/store/AppContext.jsx) |
+| アカウントごとのデータ | コイン・ロック中のアプリ・カスタムアプリ・毎日の目標はアカウントごとに分けて端末に保存する。別のアカウントでログインしても混ざらない。ログアウト中もロックはサーバー側で続き、次にログインした時に終了処理（「おめでとう」とコイン付与）をする | [`src/store/AppContext.jsx`](src/store/AppContext.jsx) |
 | 説明の省略 | 一度説明を見た端末（ログアウト後など）は、説明を飛ばして Step 3 のログイン画面から始める（「戻る」で説明も見られる）。初めての端末でも、右上の「ログイン」で説明を飛ばせる（機種変更などでアカウントを持っている人向け） | [`src/pages/Onboarding.jsx`](src/pages/Onboarding.jsx) / `AppContext.jsx` の `tutorialSeen` |
 | スキップ | スキップできるのは目的の選択だけ | [`src/pages/PurposeSelect.jsx`](src/pages/PurposeSelect.jsx) |
-| ロック中のアプリ | すでにロック中のアプリは、ロック追加で選べない | [`src/pages/AppSelect.jsx`](src/pages/AppSelect.jsx) |
+| ロック中のアプリ | すでにロック中のアプリは、ロック追加で選べない（サーバーで同じタイマーを動いている最中に始めないため） | [`src/pages/AppSelect.jsx`](src/pages/AppSelect.jsx) |
 
 ## 毎日の目標（21日で銀色）
 
@@ -511,7 +448,7 @@ Blender で作り直した時は、同じ名前で上書きすればそのまま
 
 ```
 src/
-  api.js                 PC サーバーとの通信（＋モック）
+  api.js                 サーバー（cf-rules-api）との通信（＋モック）
   storage.js             保存先とのやりとり（今はモック）
   auth.js                アカウント作成・ログイン（今はモック）
   habit.js               毎日の目標のルール（成功・進化・退化・お休みチケット・日ごとの分数）
@@ -524,7 +461,7 @@ src/
     Home.jsx             メイン画面
     AppSelect.jsx        ① 制限するアプリと時間
     PurposeSelect.jsx    ② 目的（スキップ可）
-    Confirm.jsx          ③ 最終確認 → PC サーバーへ送信
+    Confirm.jsx          ③ 最終確認 → サーバーでタイマーを開始
     Stats.jsx            まとめ（今週 / 今月のグラフ・カレンダー）
 public/
   models/slime.glb       キャラクター（Blender で作成）

@@ -16,7 +16,7 @@ const STORAGE_KEY = 'sns-blocker:v1';
 const initialState = {
   account: null, // ログイン中のアカウント { userId, email }。null なら初めての利用者 / ログアウト中
   tutorialSeen: false, // この端末で説明を見たか（ログアウトしても消さない。次からはログイン画面から始める）
-  clockOffset: 0, // PCサーバー時刻 - 端末時刻（ms）
+  clockOffset: 0, // サーバー時刻 - 端末時刻（ms）
   users: {}, // userId ごとのデータ（下の emptyUser の形）
 };
 
@@ -26,7 +26,7 @@ const emptyUser = {
   // まだ画面で知らせていない判定の結果（habit.js の applyDay の event）。
   // アプリを閉じても消えないように保存し、知らせ終わったら空にする。食べたチケットには eaten: true を付ける
   habitEvents: [],
-  activeLocks: [], // { id, groupId, name, minutes, purpose, startAt, endAt }
+  activeLocks: [], // { id, groupId, ruleId, name, minutes, purpose, startAt, endAt }（ruleId はサーバーのタイマーのルール）
   finishedLocks: [], // 終了したが、同じスタートの他のロックがまだ続いているもの
   customApps: [], // ユーザーが追加したアプリ { name, domain }
 };
@@ -54,7 +54,7 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [state, setState] = useState(loadState);
   // ロック設定の入力途中の内容（アプリ選択→目的→確認 の間で共有）
-  // unsupported: PCサーバーに「対応していない」と言われたアプリ名
+  // unsupported: サーバーにドメインを受け付けてもらえなかったカスタムアプリの名前
   // startIdx: ロック設定を始めた時の履歴位置（終わったら元の画面に戻るため）
   const [draft, setDraft] = useState(emptyDraft);
   // 終了したロックの「おめでとう」表示用

@@ -13,7 +13,7 @@ export default function AppSelect() {
   const unsupported = new Set(draft.unsupported);
 
   // 開いているポップアップ: { type: 'time', targets: [アプリ名] } / { type: 'custom', editing: アプリ名 | null } / null
-  // PCサーバーに対応していないと言われて戻ってきた時は、そのカスタムアプリの入力を開いておく
+  // サーバーにドメインを受け付けてもらえずに戻ってきた時は、そのカスタムアプリの入力を開いておく
   const [popup, setPopup] = useState(() => {
     const first = draft.unsupported.find(isCustom);
     return first ? { type: 'custom', editing: first } : null;
@@ -54,8 +54,8 @@ export default function AppSelect() {
         <div className="error-box align-left">
           <CircleAlert size={18} />
           <p>
-            「{draft.unsupported.join('」「')}」はPCが対応していないか、正式な名前ではありません。
-            名前とドメインを確認するか、選択を外してください。
+            「{draft.unsupported.join('」「')}」のドメインをサーバーが受け付けませんでした。
+            ドメインを確認するか、選択を外してください。
           </p>
         </div>
       )}
@@ -239,7 +239,7 @@ function CustomAppSheet({ initial, serverError, existing, onSave, onRemove, onCl
       {serverError && (
         <p className="error-box align-left small">
           <CircleAlert size={16} />
-          PCが対応していないか、正式な名前ではありません。名前とドメインを確認してください。
+          サーバーがこのドメインを受け付けませんでした。ドメインを確認してください。
         </p>
       )}
 

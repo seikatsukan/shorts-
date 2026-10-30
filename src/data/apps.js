@@ -1,5 +1,5 @@
 // デフォルトで登録してあるアプリ
-// domain: カスタム追加時の重複チェック用（PCサーバーへは送らない。PCサーバーは名前から特定する）
+// domain: カスタム追加時の重複チェック用。サーバーのカタログ（/options）に無いアプリ（Facebook・Threads）はこのドメインで送る
 // color: アイコンタイルの色 / glyph: タイルに表示する文字
 export const DEFAULT_APPS = [
   { name: 'YouTube', domain: 'youtube.com', color: '#FF0033', glyph: '▶' },

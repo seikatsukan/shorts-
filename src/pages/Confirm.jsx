@@ -8,7 +8,7 @@ import { formatMinutes } from '../data/apps';
 
 export default function Confirm() {
   const navigate = useNavigate();
-  const { draft, addLocks, resetDraft, customDomainOf, setDraftUnsupported } = useApp();
+  const { draft, addLocks, resetDraft, customDomainOf, setDraftUnsupported, setDraftApp } = useApp();
   // 通信中（ローディング）とエラーの状態
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -26,11 +26,22 @@ export default function Confirm() {
     setIsLoading(true);
     setError(null);
     try {
-      // PCサーバーへ送信し、開始・終了時刻とサーバー時刻を受け取る
+      // サーバーでアプリごとのタイマーを始め、開始・終了時刻とサーバー時刻を受け取る
       // カスタムアプリだけドメインを付ける
       const apps = draft.apps.map((a) => ({ ...a, domain: customDomainOf(a.name) }));
       const result = await startLock({ apps });
       addLocks({ ...result, purpose: draft.purpose });
+      // 一部だけ始められなかった時は、始められたアプリを外して残りだけもう一度試せるようにする
+      // （始めたタイマーは止められないので、ここで全部をやり直しにはしない）
+      if (result.failed.length > 0) {
+        result.locks.forEach((l) => setDraftApp(l.name, null));
+        setError(
+          `${result.locks.map((l) => l.name).join('、')} はロックを始めました。` +
+            `${result.failed.map((f) => f.name).join('、')} は始められませんでした（${result.failed[0].message}）`,
+        );
+        setIsLoading(false);
+        return;
+      }
       resetDraft();
       // ロック設定を始めたメイン画面まで履歴を戻す
       backTo(draft.startIdx, '/home');
@@ -82,7 +93,7 @@ export default function Confirm() {
         <div className="modal-overlay">
           <div className="loading">
             <div className="spinner" />
-            <p>PCに送信中…</p>
+            <p>ロックを始めています…</p>
           </div>
         </div>
       )}
