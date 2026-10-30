@@ -1662,3 +1662,42 @@ ul {
   color: var(--text-muted);
   margin-top: 8px;
 }
+
+/* 説明ページ: 登録ページ・アプリのストアへのリンク */
+.onboarding-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.onboarding-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+/* 画面の低いスマホでは、説明の文が収まるようにアイコンを小さくする */
+@media (max-height: 720px) {
+  .onboarding-icon {
+    width: 84px;
+    height: 84px;
+    margin-bottom: 18px;
+  }
+  .onboarding-icon svg {
+    width: 40px;
+    height: 40px;
+  }
+  .onboarding-page h2 {
+    font-size: 21px;
+    margin-bottom: 10px;
+  }
+}

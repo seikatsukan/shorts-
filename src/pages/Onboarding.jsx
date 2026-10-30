@@ -1,58 +1,76 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Check, ChevronLeft, Monitor, Wifi, Power, Lock, Target, Timer, Coins, ChartBar, Eye, EyeOff,
+  Check, ChevronLeft, Smartphone, Cloud, Download, ShieldCheck, Power, Layers, Timer, CalendarClock, Sparkles,
+  Coins, Eye, EyeOff, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { AuthError, logIn as logInApi, signUp } from '../auth';
 
-const STEPS = ['PCの準備', '使い方', 'アカウント'];
+const STEPS = ['準備', '使い方', 'アカウント'];
 
-// Step 1: PCサーバーの起動・設定
-const PC_SLIDES = [
+// Step 1: スマホの準備（最初の1回だけ）
+// ブロックは Cloudflare Zero Trust（ユーザー自身のアカウント）がスマホの 1.1.1.1 アプリ（WARP）の通信に対して行う。
+// 証明書の手順は cf-rules（バックエンド）が「手でやる手順」として返すものと同じ
+const SETUP_SLIDES = [
   {
-    icon: Monitor,
-    title: 'PCでサーバーを起動',
-    body: 'このアプリはPCと一緒に使います。\nまずPCで SNS Blocker のサーバーを\n起動してください。',
+    icon: Smartphone,
+    title: '準備は最初の1回だけ',
+    body: 'このアプリは Cloudflare（無料）の\n仕組みで、スマホの通信を止めます。\n使う前に、次の3つを用意します。\n\n① Cloudflare のアカウント\n② 1.1.1.1 アプリ\n③ Cloudflare の証明書',
   },
   {
-    icon: Wifi,
-    title: '同じWi-Fiにつなぐ',
-    body: 'スマホとPCを\n同じWi-Fiに接続してください。\nスマホからPCへロックを依頼します。',
+    icon: Cloud,
+    title: '① Cloudflare に登録',
+    body: 'Cloudflare のアカウントを作り、\nZero Trust の無料プランを始めます。\nこの時に決める「チーム名」は\n② で使うのでメモしておきます。',
+    links: [{ label: 'Cloudflare に登録', href: 'https://dash.cloudflare.com/sign-up' }],
+  },
+  {
+    icon: Download,
+    title: '② 1.1.1.1 アプリを入れる',
+    body: '「1.1.1.1」アプリを入れて、\nメニュー →「アカウント」→\n「Cloudflare Zero Trust にログイン」で\nチーム名を入れて参加します。',
+    links: [
+      { label: 'App Store', href: 'https://apps.apple.com/app/id1423538627' },
+      { label: 'Google Play', href: 'https://play.google.com/store/apps/details?id=com.cloudflare.onedotonedotonedotone' },
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    title: '③ 証明書を入れる',
+    body: 'ブロックを正しく効かせるために、\nCloudflare の証明書をスマホに入れて\n信頼します。iPhone は、入れた後に\n設定 → 一般 → 情報 →\n証明書信頼設定 でオンにします。',
   },
   {
     icon: Power,
-    title: 'PCは起動したままに',
-    body: 'ロック中はPCのサーバーを\n起動したままにしてください。\nPCがアプリをブロックします。',
+    title: '1.1.1.1 はオンのまま',
+    body: '1.1.1.1 アプリがオフだと\nロックが効きません。\n普段からオンにしておきましょう。\n\nこのアプリと Cloudflare のつなぎ方は\nログインの後に案内します。',
   },
 ];
 
 // Step 2: アプリの使い方
 const USAGE_SLIDES = [
   {
-    icon: Lock,
-    title: 'アプリと時間を選ぶ',
-    body: '「ロックする」から制限したいアプリと\n時間（20分・30分・1時間など）を\n選びます。',
-  },
-  {
-    icon: Target,
-    title: '目的を決める',
-    body: '空いた時間で何をするか\n（勉強・昼寝・スポーツなど）を\n決めておけます。スキップもOK。',
+    icon: Layers,
+    title: '使い方は2つ',
+    body: 'ログインした後に、どちらかを選びます。\n\n・自分でロック\n・固定時間で自動ロック\n\n「自分でロック」からは、あとで\n固定時間に変えられます。',
   },
   {
     icon: Timer,
-    title: 'スタートしたら最後まで',
-    body: 'ロック中は残り時間が表示されます。\n一度始めたロックは\nキャンセルできません。',
+    title: '自分でロック',
+    body: '使いたくない時に、アプリと時間\n（20分・30分・1時間など）を選んで\nスタートします。\n始めたロックは、最後まで\nキャンセルできません。',
+  },
+  {
+    icon: CalendarClock,
+    title: '固定時間で自動ロック',
+    body: '「平日 9:00〜17:00 は YouTube」のように\n曜日・時間帯・アプリを決めると、\n毎週その時間は自動でロックされます。\nやめる時は、翌朝に承認が必要です。',
+  },
+  {
+    icon: Sparkles,
+    title: '続けるとスライムが育つ',
+    body: '目標を達成した日（固定時間では\n一時解除を使わなかった日）が続くと\nスライムの色が変わり、21日で銀色に。\nできなかった日は1つ戻ります。',
   },
   {
     icon: Coins,
-    title: '毎日続けて銀色に',
-    body: '1日の目標時間ロックできた日が続くと\nスライムの色が変わり、21日で銀色に。\nできなかった日は1つ戻ります。',
-  },
-  {
-    icon: ChartBar,
-    title: '記録をふりかえる',
-    body: 'メニューの「週/月のまとめ」で\nどのアプリをどれだけ制限できたか\n確認できます。',
+    title: 'コインでチケットを買う',
+    body: 'ロックをやりきるとコインがもらえます。\n自分でロックでは「お休みチケット」、\n固定時間では「一時解除チケット」を\nコインで買えます。',
   },
 ];
 
@@ -90,7 +108,7 @@ export default function Onboarding() {
 
       <StepIndicator current={step} />
 
-      {step === 1 && <Carousel key="pc" slides={PC_SLIDES} onDone={() => setStep(2)} />}
+      {step === 1 && <Carousel key="setup" slides={SETUP_SLIDES} onDone={() => setStep(2)} />}
       {step === 2 && <Carousel key="usage" slides={USAGE_SLIDES} onDone={() => goToAccount('signup')} />}
       {step === 3 && <AccountForm key={accountMode} initialMode={accountMode} />}
     </div>
@@ -136,13 +154,23 @@ function Carousel({ slides, onDone }) {
   return (
     <>
       <div className="onboarding-scroller" ref={scrollerRef} onScroll={handleScroll}>
-        {slides.map(({ icon: Icon, title, body }) => (
+        {slides.map(({ icon: Icon, title, body, links }) => (
           <section key={title} className="onboarding-page">
             <div className="onboarding-icon">
               <Icon size={56} strokeWidth={1.5} />
             </div>
             <h2>{title}</h2>
             <p>{body}</p>
+            {/* 登録ページ・アプリのストアなど（別のタブで開く） */}
+            {links && (
+              <div className="onboarding-links">
+                {links.map((l) => (
+                  <a key={l.href} className="onboarding-link" href={l.href} target="_blank" rel="noopener noreferrer">
+                    {l.label} <ExternalLink size={14} />
+                  </a>
+                ))}
+              </div>
+            )}
           </section>
         ))}
       </div>
