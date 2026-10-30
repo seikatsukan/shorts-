@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Check, ChevronLeft, Smartphone, Cloud, Download, ShieldCheck, Power, Layers, Timer, CalendarClock, Sparkles,
-  Coins, Eye, EyeOff, ExternalLink,
+  Coins, Eye, EyeOff, ExternalLink, CalendarCheck,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { AuthError, logIn as logInApi, signUp } from '../auth';
@@ -61,6 +61,12 @@ const USAGE_SLIDES = [
     icon: CalendarClock,
     title: '固定時間で自動ロック',
     body: '毎日の習慣にしたい人に。\n「平日 9:00〜17:00 は YouTube」のように\n曜日・時間帯・アプリを決めると、\n毎週その時間は自動でロックされます。\nやめる時は、翌朝に承認が必要です。',
+  },
+  {
+    // よく知られた考え方で、決まった数字ではないので「言われています」と書く
+    icon: CalendarCheck,
+    title: '21日間の法則',
+    body: '新しい習慣は、21日続けると\n身につきやすいと言われています。\nこのアプリも、まずは21日\n続けることを目標にしています。',
   },
   {
     icon: Sparkles,
