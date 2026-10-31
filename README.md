@@ -1,4 +1,4 @@
-# SNS Blocker Web
+# shorts動画キラー
 
 SNS などのアプリを、決めた時間だけ使えなくする Web アプリ（スマホ向け）。
 
