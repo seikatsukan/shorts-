@@ -1686,3 +1686,157 @@ ul {
   font-weight: 700;
   margin-bottom: 12px;
 }
+
+/* ---- Cloudflare との連携 ---- */
+.connect-screen .top-bar .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.connect-screen .card {
+  margin-bottom: 12px;
+}
+.connect-screen .error-box {
+  margin-bottom: 12px;
+}
+.connect-screen .error-box .text-button {
+  margin-top: 4px;
+  color: var(--danger);
+  text-decoration: underline;
+}
+.connect-steps {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.connect-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.connect-steps li.active,
+.connect-steps li.done {
+  color: var(--text);
+  font-weight: 700;
+}
+.connect-step-circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 2px solid #ddd8d0;
+  background: var(--surface);
+}
+.connect-steps li.active .connect-step-circle {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.connect-steps li.done .connect-step-circle {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.connect-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.connect-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+}
+.connect-note {
+  font-size: 13px;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.connect-account {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.connect-account span {
+  font-weight: 400;
+  color: var(--text-sub);
+}
+.connect-heading {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.connect-auto {
+  list-style: none;
+  padding: 0;
+  font-size: 14px;
+}
+.connect-auto li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.connect-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.connect-status.ok {
+  color: var(--text);
+  font-weight: 700;
+}
+.connect-status.ng {
+  color: var(--danger);
+  font-weight: 700;
+}
+.connect-manual {
+  list-style: none;
+  padding: 0;
+  margin-top: 8px;
+}
+.connect-manual label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.connect-manual input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.connect-manual small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-sub);
+}

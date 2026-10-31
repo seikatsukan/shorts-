@@ -4,6 +4,7 @@ import { fetchRecords, saveRecord } from '../storage';
 import { fetchSession, logOutSession } from '../auth';
 import { uuid } from '../utils';
 import { useFixedMode } from './useFixedMode';
+import { useCloudflare } from './useCloudflare';
 import {
   MAX_EXTRA_TICKETS, TICKET_PRICE, applyDay, fetchRangeFor, mergeRanges, minutesByDay, newHabit, settle,
 } from '../habit';
@@ -37,6 +38,8 @@ const emptyUser = {
   activeLocks: [], // { id, groupId, ruleId, name, minutes, purpose, startAt, endAt }（ruleId はサーバーのタイマーのルール）
   finishedLocks: [], // 終了したが、同じスタートの他のロックがまだ続いているもの
   customApps: [], // ユーザーが追加したアプリ { name, domain }
+  cloudflare: null, // Cloudflare との連携の状態（useCloudflare.js）
+  cloudflareReady: false, // 連携の後の手でやる手順を済ませたか（useCloudflare.js）
 };
 
 const NO_EVENTS = []; // 判定の結果が無い時（毎回同じ配列を使う）
@@ -204,6 +207,7 @@ export function AppProvider({ children }) {
   }, [evaluateHabit, habitGoal]);
 
   const fixedMode = useFixedMode({ user, updateUser, now });
+  const cloudflare = useCloudflare({ user, userId, updateUser });
 
   const value = useMemo(
     () => ({
@@ -217,6 +221,7 @@ export function AppProvider({ children }) {
       draft,
       completed,
       ...fixedMode,
+      ...cloudflare,
 
       markTutorialSeen: () => setState((s) => (s.tutorialSeen ? s : { ...s, tutorialSeen: true })),
       logIn: (account) => setState((s) => ({ ...s, account, tutorialSeen: true })),
@@ -334,7 +339,7 @@ export function AppProvider({ children }) {
         },
       }),
     }),
-    [state.account, sessionChecked, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit, fixedMode],
+    [state.account, sessionChecked, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit, fixedMode, cloudflare],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

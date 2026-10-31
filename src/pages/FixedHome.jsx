@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CalendarX, Ellipsis, Lock, LockOpen, LogOut, Target, X } from 'lucide-react';
+import { CalendarClock, CalendarX, Cloud, Ellipsis, Lock, LockOpen, LogOut, Target, X } from 'lucide-react';
 import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
@@ -124,6 +124,9 @@ export default function FixedHome() {
                 <CalendarX size={20} /> 固定時間をキャンセル
               </button>
             )}
+            <button className="menu-item" onClick={() => navigate('/connect')}>
+              <Cloud size={20} /> Cloudflare の連携
+            </button>
             <button className="menu-item" onClick={handleLogout}>
               <LogOut size={20} /> ログアウト
             </button>

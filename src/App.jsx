@@ -8,6 +8,7 @@ import Stats from './pages/Stats';
 import ModeSelect from './pages/ModeSelect';
 import FixedSetup from './pages/FixedSetup';
 import FixedHome from './pages/FixedHome';
+import CloudflareConnect from './pages/CloudflareConnect';
 import './App.css';
 
 // ログインしていなければ（初めての利用者・ログアウト後）説明ページ、していればメイン画面
@@ -18,13 +19,28 @@ function Entry() {
   return sessionChecked ? <Onboarding /> : null;
 }
 
+// Cloudflare との連携と初期設定が済んでいなければ、連携の画面へ（ロックはユーザーの Cloudflare に書き込むため）
+// 前に確かめた状態が無く、サーバーに確かめている途中は何も出さない
+function RequireCloudflare({ children }) {
+  const { cloudflare, cloudflareReady, cloudflareChecked } = useApp();
+  if (cloudflareReady) return children;
+  if (!cloudflare && !cloudflareChecked) return null;
+  return <Navigate to="/connect" replace />;
+}
+
+// ログインが必要な画面
+function RequireAccount({ children }) {
+  const { account } = useApp();
+  return account ? children : <Navigate to="/" replace />;
+}
+
 // ログインと使い方のモードが必要な画面（ログインしていなければ説明ページ、モードが未選択ならモード選択へ）。mode を指定するとそのモードの時だけ（違えばメイン画面へ）
 function RequireMode({ mode: only, children }) {
   const { account, mode } = useApp();
   if (!account) return <Navigate to="/" replace />;
   if (!mode) return <Navigate to="/mode" replace />;
   if (only && mode !== only) return <Navigate to="/home" replace />;
-  return children;
+  return <RequireCloudflare>{children}</RequireCloudflare>;
 }
 
 // メイン画面はモードごとに別
@@ -37,7 +53,7 @@ function HomeByMode() {
 function RequireNotFixed({ children }) {
   const { account, mode } = useApp();
   if (!account) return <Navigate to="/" replace />;
-  return mode === 'fixed' ? <Navigate to="/home" replace /> : children;
+  return mode === 'fixed' ? <Navigate to="/home" replace /> : <RequireCloudflare>{children}</RequireCloudflare>;
 }
 
 export default function App() {
@@ -47,6 +63,7 @@ export default function App() {
         <div className="app-container">
           <Routes>
             <Route path="/" element={<Entry />} />
+            <Route path="/connect" element={<RequireAccount><CloudflareConnect /></RequireAccount>} />
             <Route path="/mode" element={<RequireNotFixed><ModeSelect /></RequireNotFixed>} />
             <Route path="/fixed-setup" element={<RequireNotFixed><FixedSetup /></RequireNotFixed>} />
             <Route path="/home" element={<RequireMode><HomeByMode /></RequireMode>} />

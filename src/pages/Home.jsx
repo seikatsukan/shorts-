@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ellipsis, X, LogOut, ChartBar, Plus, Lock, Target, CalendarClock } from 'lucide-react';
+import { Ellipsis, X, LogOut, ChartBar, Plus, Lock, Target, CalendarClock, Cloud } from 'lucide-react';
 import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
@@ -129,6 +129,9 @@ export default function Home() {
             {/* 固定時間へはいつでも移れる（スライムの成長とコインはリセット。予定の画面で知らせる） */}
             <button className="menu-item" onClick={() => navigate('/fixed-setup')}>
               <CalendarClock size={20} /> 固定時間で自動ロックにする
+            </button>
+            <button className="menu-item" onClick={() => navigate('/connect')}>
+              <Cloud size={20} /> Cloudflare の連携
             </button>
             <button className="menu-item" onClick={handleLogout}>
               <LogOut size={20} /> ログアウト

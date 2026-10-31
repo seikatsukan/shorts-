@@ -3,6 +3,7 @@
 // 取り決めは seikatsukan/api-spec の openapi.yaml（v0.2.0 の案）。バックエンドは変えられないので、こちらが合わせる。
 // - API は画面と同じオリジンの /api 以下。ログインは /auth 以下で付く Cookie（session）で続く
 // - .env に VITE_API_BASE=/api と書くと本物のサーバーへ送る（手元では vite.config.js のプロキシで流す）
+//   サーバーが /api を付けずに置いた時は VITE_API_BASE=/ と書く（/rules などへ送る）
 //   未設定の場合はモック（サーバーの代わりにブラウザ内で仕様どおりの応答を作る）で動く
 // - エラーは常に { code, message, details }。message はそのまま画面に出せる日本語
 //
@@ -21,8 +22,8 @@
 import { DEFAULT_APPS } from './data/apps';
 import { UNLOCK_SETTINGS, formatDays, formatTimeRange } from './fixed';
 
-const API_BASE = import.meta.env.VITE_API_BASE;
-const IS_MOCK = !API_BASE;
+const IS_MOCK = !import.meta.env.VITE_API_BASE;
+const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') ?? '';
 
 // サーバーが返したエラー
 export class ApiError extends Error {
@@ -226,7 +227,38 @@ async function fetchClock() {
   return { serverNow, offset: serverNow - (sentAt + receivedAt) / 2 };
 }
 
+// ---- Cloudflare との連携 ----
+// ロックのルールはユーザー自身の Cloudflare に書き込むので、使う前に連携と初期設定が要る
+//   1. POST /cloudflare/connect → 返ってきた url（Cloudflare の認可画面）へ画面ごと移動する
+//   2. 許可するとサーバーの /cloudflare/callback を通ってアプリに戻る。失敗した時は ?cloudflareError=<reason> が付く
+//   3. POST /cloudflare/setup で初期設定（何度呼んでもよい）。manualSteps はユーザーが手でやること（証明書など）
+// 連携していない時、ルールを作る・タイマー・一時解除などは CLOUDFLARE_NOT_CONNECTED（409）になる。
+// その時は CLOUDFLARE_DISCONNECTED_EVENT を出し、連携の画面へ戻す（useCloudflare.js）
+
+export const CLOUDFLARE_DISCONNECTED_EVENT = 'sns-blocker:cloudflare-disconnected';
+
+// 連携と初期設定の状態 { connected, accountName, setup: { tlsDecryptEnabled, gatewayProxyEnabled, manualSteps } | null }
+export const fetchCloudflare = () => request('GET', '/cloudflare');
+
+// Cloudflare の認可画面へ移動する
+export async function connectCloudflare() {
+  const { url } = await request('POST', '/cloudflare/connect');
+  window.location.assign(url);
+}
+
+// 初期設定をする。{ tlsDecryptEnabled, gatewayProxyEnabled, manualSteps }（true / false / null は未確認）
+export const setupCloudflare = () => request('POST', '/cloudflare/setup');
+
 async function request(method, path, body) {
+  try {
+    return await send(method, path, body);
+  } catch (e) {
+    if (e.code === 'CLOUDFLARE_NOT_CONNECTED') window.dispatchEvent(new Event(CLOUDFLARE_DISCONNECTED_EVENT));
+    throw e;
+  }
+}
+
+async function send(method, path, body) {
   if (IS_MOCK) return mockRequest(method, path, body);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
@@ -254,9 +286,12 @@ async function request(method, path, body) {
 // ルールはブラウザに保存する（再読み込みしても、動いているタイマーが残るように）
 // 開発用: localStorage の sns-blocker:mock-api-fail に ["Facebook"] のようにルール名を入れると、
 // そのルールのタイマーを始める時に 502 を返す（一部だけ始められなかった時の画面を試すため）
+// 開発用: localStorage の sns-blocker:mock-cloudflare-error に "denied" のように reason を入れると、
+// Cloudflare の連携が失敗して ?cloudflareError=denied 付きで戻ってくる（連携できなかった時の画面を試すため）
 
 const MOCK_KEY = 'sns-blocker:mock-api';
 const MOCK_FAIL_KEY = 'sns-blocker:mock-api-fail';
+const MOCK_CF_ERROR_KEY = 'sns-blocker:mock-cloudflare-error';
 const MOCK_DELAY = 250; // 1回の通信にかかる時間（ms）
 
 // cf-rules の get_catalog() と同じアプリ
@@ -277,7 +312,14 @@ const MOCK_EMPTY = {
   settings: { unlock: { unlockMinutes: 10, unlocksPerDay: 2, delayedUnlockMinutes: 5 }, approvalExpiryHours: 24 },
   pending: [],
   unlocks: [],
+  // Cloudflare の連携。setup は初期設定をした結果（していなければ null）
+  cloudflare: { connected: false, accountName: null, setup: null },
 };
+// cf-rules の ensure_setup が返す「手でやる手順」と同じ
+const MOCK_MANUAL_STEPS = [
+  'スマホに Cloudflare のルート証明書をインストールして信頼する',
+  'スマホの WARP（1.1.1.1 アプリ）でこの Zero Trust 組織にログインする',
+];
 
 // 開発用（モックの時だけ）: 反映待ちの変更を、今すぐ承認できるようにする（翌朝まで待たずに試すため）
 export function devMakeApprovable() {
@@ -356,6 +398,35 @@ function mockHandle(method, path, body) {
     ...u,
     status: u.cancelledAt ? 'cancelled' : Date.parse(u.startsAt) > now ? 'waiting' : Date.parse(u.endsAt) > now ? 'active' : 'ended',
   });
+
+  // Cloudflare の連携
+  const cf = db.cloudflare;
+  if (method === 'GET' && path === '/cloudflare') {
+    const setup = cf.setup ?? { tlsDecryptEnabled: false, gatewayProxyEnabled: false, manualSteps: MOCK_MANUAL_STEPS };
+    return { connected: cf.connected, accountName: cf.accountName, setup: cf.connected ? setup : null };
+  }
+  if (method === 'POST' && path === '/cloudflare/connect') {
+    // 本物は Cloudflare の画面を通って戻ってくる。モックはその場で許可したことにしてアプリに戻る
+    const reason = localStorage.getItem(MOCK_CF_ERROR_KEY);
+    if (reason) return { url: `/?cloudflareError=${encodeURIComponent(reason)}` };
+    db.cloudflare = { connected: true, accountName: "alice@example.com's Account", setup: null };
+    saveMock(db);
+    return { url: '/' };
+  }
+  const notConnected = () => fail(409, 'CLOUDFLARE_NOT_CONNECTED', 'Cloudflare と連携してください');
+  if (method === 'POST' && path === '/cloudflare/setup') {
+    if (!cf.connected) notConnected();
+    db.cloudflare = { ...cf, setup: { tlsDecryptEnabled: true, gatewayProxyEnabled: true, manualSteps: MOCK_MANUAL_STEPS } };
+    saveMock(db);
+    return db.cloudflare.setup;
+  }
+  // 仕様で CLOUDFLARE_NOT_CONNECTED を返すもの（Cloudflare に書き込む操作）
+  const writesCloudflare =
+    (method === 'POST' && ['/rules', '/unlocks'].includes(path)) ||
+    (['PATCH', 'DELETE'].includes(method) && /^\/rules\/[^/]+$/.test(path)) ||
+    (method === 'POST' && /^\/rules\/[^/]+\/timer$/.test(path)) ||
+    (method === 'POST' && /^\/pending-changes\/[^/]+\/approve$/.test(path));
+  if (writesCloudflare && !cf.connected) notConnected();
 
   if (method === 'GET' && path === '/options') {
     return { apps: MOCK_CATALOG, categories: {}, webPushPublicKey: null };
