@@ -11,9 +11,11 @@ import FixedHome from './pages/FixedHome';
 import './App.css';
 
 // ログインしていなければ（初めての利用者・ログアウト後）説明ページ、していればメイン画面
+// Google のログインから戻ってきた時は、サーバーに確かめ終わるまで何も出さない
 function Entry() {
-  const { account } = useApp();
-  return account ? <Navigate to="/home" replace /> : <Onboarding />;
+  const { account, sessionChecked } = useApp();
+  if (account) return <Navigate to="/home" replace />;
+  return sessionChecked ? <Onboarding /> : null;
 }
 
 // ログインと使い方のモードが必要な画面（ログインしていなければ説明ページ、モードが未選択ならモード選択へ）。mode を指定するとそのモードの時だけ（違えばメイン画面へ）

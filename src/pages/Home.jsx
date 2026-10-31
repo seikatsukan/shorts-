@@ -4,6 +4,7 @@ import { Ellipsis, X, LogOut, ChartBar, Plus, Lock, Target, CalendarClock } from
 import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
+import { InstallHint } from '../components/InstallHint';
 import { formatCountdown, formatClock, formatMinutes } from '../data/apps';
 import { PurposeSheet } from '../components/PurposeSheet';
 import {
@@ -152,6 +153,8 @@ export default function Home() {
           </Suspense>
         </ErrorBoundary>
       </div>
+
+      <InstallHint />
 
       {habit ? (
         <HabitPanel

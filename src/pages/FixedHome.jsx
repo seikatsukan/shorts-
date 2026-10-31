@@ -4,6 +4,7 @@ import { CalendarClock, CalendarX, Ellipsis, Lock, LockOpen, LogOut, Target, X }
 import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
+import { InstallHint } from '../components/InstallHint';
 import { PurposeSheet } from '../components/PurposeSheet';
 import { formatClock, formatCountdown } from '../data/apps';
 import { COLORS, MAX_STAGE, STEP_DAYS, dayStart, hasCrown } from '../habit';
@@ -137,6 +138,8 @@ export default function FixedHome() {
           </Suspense>
         </ErrorBoundary>
       </div>
+
+      <InstallHint />
 
       {/* お知らせ（キャンセルの期限切れなど） */}
       {fixed.notice && (

@@ -48,15 +48,15 @@ const toItems = (records) =>
 // 保存先から期間内の記録を取得する
 function useRecords(from, to) {
   const { userId } = useApp();
-  const [result, setResult] = useState({ key: null, records: [], demo: false, error: null });
+  const [result, setResult] = useState({ key: null, records: [], error: null });
   const fromTime = from.getTime();
   const toTime = to.getTime();
   const key = `${userId}-${fromTime}-${toTime}`;
   useEffect(() => {
     let cancelled = false;
     fetchRecords({ userId, from: new Date(fromTime), to: new Date(toTime) })
-      .then(({ records, demo }) => !cancelled && setResult({ key, records: toItems(records), demo, error: null }))
-      .catch(() => !cancelled && setResult({ key, records: [], demo: false, error: '記録を取得できませんでした' }));
+      .then(({ records }) => !cancelled && setResult({ key, records: toItems(records), error: null }))
+      .catch(() => !cancelled && setResult({ key, records: [], error: '記録を取得できませんでした' }));
     return () => {
       cancelled = true;
     };
@@ -90,7 +90,7 @@ export default function Stats() {
   const [activeApp, setActiveApp] = useState(null);
 
   const period = getPeriod(tab, offset, today);
-  const { records, demo, loading, error } = useRecords(period.start, period.end);
+  const { records, loading, error } = useRecords(period.start, period.end);
   const rows = summarize(records);
   const total = rows.reduce((s, r) => s + r.minutes, 0);
 
@@ -118,8 +118,6 @@ export default function Stats() {
         <h2 className="top-bar-title">まとめ</h2>
         <div style={{ width: 40 }} />
       </header>
-
-      {demo && <p className="demo-note">※ 記録がまだ無いのでデモデータを表示しています</p>}
 
       {/* 今週 / 今月 */}
       <section className="card">
@@ -158,7 +156,18 @@ export default function Stats() {
         ) : loading && total === 0 ? (
           <p className="empty-text">読み込み中…</p>
         ) : total === 0 ? (
-          <p className="empty-text">この期間の記録はありません</p>
+          // 今週・今月が空の時は、ロックすると記録されることを伝える
+          <p className="empty-text">
+            {offset === 0 ? (
+              <>
+                まだ記録がありません
+                <br />
+                ロックすると、ここに記録されます
+              </>
+            ) : (
+              'この期間の記録はありません'
+            )}
+          </p>
         ) : (
           <>
             {/* 全体を1本のバーで表示（Googleストレージ風） */}

@@ -1,63 +1,59 @@
-// アカウント作成・ログイン
+// ログイン（Google）
 //
-// 認証サーバーはまだ無いので、今はモックとして端末の localStorage にアカウントを保存する。
-// 認証サーバーができたら、この2つの関数の中身を API 通信に差し替えるだけでよい。
+// ログインはサーバー（cf-rules-api の /auth 以下）が持ち、Cookie（session、HttpOnly）で続く。
+// - ログイン: /auth/google/start へ画面ごと移動する（fetch ではない）。終わると next の画面に戻ってくる
+//   今のサーバーは偽のログインだけで、開いただけでダミーのユーザーになる。本物の Google になってもここは変わらない
+// - ログイン中か: GET /auth/session → { user: { id, email, name } }。ログインしていなければ 401
+// - ログアウト: POST /auth/logout（この端末だけ）
+// VITE_API_BASE が未設定の時（api.js と同じ）はモックで動き、ボタンを押すとダミーのユーザーでログインする
 //
-// 成功時に返す値: { userId, email }
-// 失敗時: AuthError を投げる（message をそのまま画面に表示する）
+// アカウントの形: { userId, email, name }（userId はサーバーの users.id。端末に保存するデータもこれで分ける）
 
-import { uuid } from './utils';
+const IS_MOCK = !import.meta.env.VITE_API_BASE;
+const MOCK_SESSION_KEY = 'sns-blocker:mock-session';
+const MOCK_USER = { userId: 'u_mock_alice', email: 'alice@example.com', name: 'Alice（テスト）' };
 
-const ACCOUNTS_KEY = 'sns-blocker:mock-accounts';
-
-export class AuthError extends Error {}
-
-export async function signUp({ email, password }) {
-  await wait();
-  const accounts = readAccounts();
-  if (accounts.some((a) => a.email === email)) {
-    throw new AuthError('このメールアドレスはすでに登録されています');
+// Google のログイン画面へ移動する。モックの時はその場でログインしてアカウントを返す
+export async function startGoogleLogin() {
+  if (IS_MOCK) {
+    await new Promise((r) => setTimeout(r, 500)); // 通信の待ち時間を再現
+    write(MOCK_SESSION_KEY, MOCK_USER);
+    return MOCK_USER;
   }
-  const account = { userId: uuid(), email, passwordHash: await hash(password) };
-  writeAccounts([...accounts, account]);
-  return { userId: account.userId, email };
+  window.location.assign('/auth/google/start?next=/');
+  return null;
 }
 
-export async function logIn({ email, password }) {
-  await wait();
-  const account = readAccounts().find((a) => a.email === email);
-  if (!account || account.passwordHash !== (await hash(password))) {
-    throw new AuthError('メールアドレスかパスワードが違います');
-  }
-  return { userId: account.userId, email };
+// ログイン中のアカウント。ログインしていなければ null。通信できない時は例外
+export async function fetchSession() {
+  if (IS_MOCK) return read(MOCK_SESSION_KEY);
+  const r = await fetch('/auth/session', { credentials: 'same-origin' });
+  if (r.status === 401) return null;
+  if (!r.ok) throw new Error(`ログインの確認に失敗しました (${r.status})`);
+  const { user } = await r.json();
+  return { userId: user.id, email: user.email, name: user.name };
 }
 
-const wait = () => new Promise((r) => setTimeout(r, 800)); // 通信の待ち時間を再現
-
-// モックでもパスワードをそのまま保存しないようにハッシュ化しておく
-// （crypto.subtle は https / localhost でしか使えないので、http の時は簡易ハッシュ）
-async function hash(text) {
-  const bytes = new TextEncoder().encode(text);
-  if (crypto.subtle) {
-    const buf = await crypto.subtle.digest('SHA-256', bytes);
-    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+// この端末だけログアウトする
+export async function logOutSession() {
+  if (IS_MOCK) {
+    localStorage.removeItem(MOCK_SESSION_KEY);
+    return;
   }
-  let h = 0x811c9dc5;
-  for (const b of bytes) h = Math.imul(h ^ b, 0x01000193) >>> 0;
-  return `fnv-${h.toString(16)}`;
+  await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
 }
 
-function readAccounts() {
+function read(key) {
   try {
-    return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) ?? [];
+    return JSON.parse(localStorage.getItem(key));
   } catch {
-    return [];
+    return null;
   }
 }
 
-function writeAccounts(accounts) {
+function write(key, value) {
   try {
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // 保存できなくても動作は続ける
   }

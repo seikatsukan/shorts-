@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { coinsFor } from '../data/apps';
 import { fetchRecords, saveRecord } from '../storage';
+import { fetchSession, logOutSession } from '../auth';
 import { uuid } from '../utils';
 import { useFixedMode } from './useFixedMode';
 import {
@@ -9,13 +10,14 @@ import {
 
 // アプリ全体で共有する状態（コイン・ロック中のアプリなど）
 // ※コイン・ロック・カスタムアプリはアカウントごとに分けて持つ（別のアカウントでログインしても混ざらない）
-// ※認証サーバーができたら、users の中身もサーバーのユーザーデータから読み込む想定
+// ※ログインはサーバー（auth.js）。ここに持つ account は最後に確かめた結果で、起動のたびにサーバーに確かめ直す
+// ※users の中身（コイン・スライム・予定など）はこの端末にだけ保存する（サーバーに保存する API がまだ無いため）
 // ※ロックの記録はスタート時に storage.js 経由で保存先へ送る
 
 const STORAGE_KEY = 'sns-blocker:v1';
 
 const initialState = {
-  account: null, // ログイン中のアカウント { userId, email }。null なら初めての利用者 / ログアウト中
+  account: null, // ログイン中のアカウント { userId, email, name }（auth.js）。null なら初めての利用者 / ログアウト中
   tutorialSeen: false, // この端末で説明を見たか（ログアウトしても消さない。次からはログイン画面から始める）
   clockOffset: 0, // サーバー時刻 - 端末時刻（ms）
   users: {}, // userId ごとのデータ（下の emptyUser の形）
@@ -67,6 +69,29 @@ export function AppProvider({ children }) {
   const [completed, setCompleted] = useState(null);
   // 処理済みのロック（同じロックで2回コインを付けないように）
   const processedRef = useRef(new Set());
+  // 起動した後、サーバーにログイン中か確かめ終わったか（Google から戻ってきた直下などに、説明ページを一瞬出さないため）
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  // サーバーのログインに合わせる。通信できない時は、最後に確かめた account のまま使う
+  useEffect(() => {
+    let cancelled = false;
+    fetchSession()
+      .then((account) => {
+        if (cancelled) return;
+        setState((s) =>
+          account
+            ? { ...s, account, tutorialSeen: true }
+            : s.account
+              ? { ...s, account: null }
+              : s,
+        );
+      })
+      .catch(() => {})
+      .finally(() => !cancelled && setSessionChecked(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -152,8 +177,7 @@ export function AppProvider({ children }) {
     try {
       const t = now();
       const { from, to } = fetchRangeFor(h, t);
-      // デモデータで成功扱いにならないように、実際の記録だけを使う
-      const { records } = await fetchRecords({ userId, from: new Date(from), to: new Date(to), allowDemo: false });
+      const { records } = await fetchRecords({ userId, from: new Date(from), to: new Date(to) });
       // 実際に経過した分だけ数える（ロック中の残り時間は、経過してから数える）
       const minutes = minutesByDay(records, t);
       setLockRanges(mergeRanges(records));
@@ -184,6 +208,7 @@ export function AppProvider({ children }) {
   const value = useMemo(
     () => ({
       account: state.account,
+      sessionChecked,
       tutorialSeen: state.tutorialSeen,
       userId,
       ...user,
@@ -196,6 +221,7 @@ export function AppProvider({ children }) {
       markTutorialSeen: () => setState((s) => (s.tutorialSeen ? s : { ...s, tutorialSeen: true })),
       logIn: (account) => setState((s) => ({ ...s, account, tutorialSeen: true })),
       logOut: () => {
+        logOutSession().catch(() => {}); // 通信できなくても、この端末ではログアウトした状態にする
         setState((s) => ({ ...s, account: null }));
         setCompleted(null);
         setDraft(emptyDraft);
@@ -308,7 +334,7 @@ export function AppProvider({ children }) {
         },
       }),
     }),
-    [state.account, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit, fixedMode],
+    [state.account, sessionChecked, state.tutorialSeen, userId, user, now, draft, completed, updateUser, habit, lockRanges, habitEvents, evaluateHabit, fixedMode],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -2,12 +2,13 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Check, ChevronLeft, Smartphone, Cloud, Download, ShieldCheck, Power, Layers, Timer, CalendarClock, Sparkles,
-  Coins, Eye, EyeOff, ExternalLink, CalendarCheck,
+  Coins, ExternalLink, CalendarCheck, SquarePlus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
-import { AuthError, logIn as logInApi, signUp } from '../auth';
+import { startGoogleLogin } from '../auth';
+import { installSteps, isStandalone } from '../device';
 
-const STEPS = ['準備', '使い方', 'アカウント'];
+const STEPS = ['準備', '使い方', 'ログイン'];
 
 // Step 1: スマホの準備（最初の1回だけ）
 // ブロックは Cloudflare Zero Trust（ユーザー自身のアカウント）がスマホの 1.1.1.1 アプリ（WARP）の通信に対して行う。
@@ -44,6 +45,14 @@ const SETUP_SLIDES = [
     body: '1.1.1.1 アプリがオフだと\nロックが効きません。\n普段からオンにしておきましょう。\n\nこのアプリと Cloudflare のつなぎ方は\nログインの後に案内します。',
   },
 ];
+
+// ブラウザで開いている時だけ、準備の最初に出す（ブラウザのままだと、iPhone はしばらく開かないとデータを消すため）
+// 追加した後はホーム画面のアイコンから開き直してもらうので、最初に出す
+const INSTALL_SLIDE = {
+  icon: SquarePlus,
+  title: 'まずホーム画面に追加',
+  body: `ブラウザのままだと、しばらく開かない間に\nコインやスライムが消えることがあります。\n\n${installSteps()}\n\n追加したら、ホーム画面のアイコンから\n開いて続けてください。`,
+};
 
 // Step 2: アプリの使い方
 const USAGE_SLIDES = [
@@ -84,11 +93,9 @@ export default function Onboarding() {
   const { tutorialSeen, markTutorialSeen } = useApp();
   // 一度説明を見た端末（ログアウト後など）は、説明を飛ばしてログイン画面から始める
   const [step, setStep] = useState(tutorialSeen ? 3 : 1);
-  const [accountMode, setAccountMode] = useState(tutorialSeen ? 'login' : 'signup');
 
-  const goToAccount = (mode) => {
+  const goToAccount = () => {
     markTutorialSeen();
-    setAccountMode(mode);
     setStep(3);
   };
 
@@ -104,7 +111,7 @@ export default function Onboarding() {
         )}
         {step < 3 ? (
           // すでにアカウントを持っている人は説明を飛ばしてログインへ
-          <button className="text-button" onClick={() => goToAccount('login')}>
+          <button className="text-button" onClick={goToAccount}>
             ログイン
           </button>
         ) : (
@@ -114,9 +121,15 @@ export default function Onboarding() {
 
       <StepIndicator current={step} />
 
-      {step === 1 && <Carousel key="setup" slides={SETUP_SLIDES} onDone={() => setStep(2)} />}
-      {step === 2 && <Carousel key="usage" slides={USAGE_SLIDES} onDone={() => goToAccount('signup')} />}
-      {step === 3 && <AccountForm key={accountMode} initialMode={accountMode} />}
+      {step === 1 && (
+        <Carousel
+          key="setup"
+          slides={isStandalone() ? SETUP_SLIDES : [INSTALL_SLIDE, ...SETUP_SLIDES]}
+          onDone={() => setStep(2)}
+        />
+      )}
+      {step === 2 && <Carousel key="usage" slides={USAGE_SLIDES} onDone={goToAccount} />}
+      {step === 3 && <AccountForm />}
     </div>
   );
 }
@@ -206,139 +219,44 @@ function Carousel({ slides, onDone }) {
   );
 }
 
-const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-
-// Step 3: 新規アカウント作成 / ログイン
-function AccountForm({ initialMode }) {
+// Step 3: Google でログイン（初めての人もここでアカウントができる）
+function AccountForm() {
   const navigate = useNavigate();
   const { logIn } = useApp();
-  const [mode, setMode] = useState(initialMode);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const isSignup = mode === 'signup';
-  const trimmedEmail = email.trim();
-  const errors = {
-    email: !trimmedEmail
-      ? 'メールアドレスを入力してください'
-      : !isEmail(trimmedEmail)
-        ? 'メールアドレスの形式が正しくありません'
-        : null,
-    password: !password
-      ? 'パスワードを入力してください'
-      : isSignup && password.length < 8
-        ? 'パスワードは8文字以上にしてください'
-        : null,
-    confirm: isSignup && confirm !== password ? 'パスワードが一致しません' : null,
-  };
-  const hasError = Object.values(errors).some(Boolean);
-
-  const switchMode = (next) => {
-    setMode(next);
-    setSubmitted(false);
-    setError(null);
-    setPassword('');
-    setConfirm('');
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitted(true);
-    if (hasError) return;
+  const handleLogin = async () => {
     setLoading(true);
     setError(null);
     try {
-      const account = await (isSignup ? signUp : logInApi)({ email: trimmedEmail, password });
+      // サーバーがある時は Google の画面へ移動する（戻ってきたら AppContext がログインを確かめる）
+      const account = await startGoogleLogin();
+      if (!account) return;
       logIn(account);
       navigate('/home', { replace: true });
-    } catch (err) {
-      setError(err instanceof AuthError ? err.message : '通信に失敗しました。もう一度お試しください');
+    } catch {
+      setError('通信に失敗しました。もう一度お試しください');
       setLoading(false);
     }
   };
 
   return (
-    <form className="account-form" onSubmit={handleSubmit} noValidate>
-      <h2 className="page-title">{isSignup ? 'アカウントを作成' : 'ログイン'}</h2>
+    <div className="account-form">
+      <h2 className="page-title">ログイン</h2>
       <p className="page-subtitle">
-        {isSignup ? '記録やコインを保存するためにアカウントを作ります' : '登録したメールアドレスでログインします'}
+        Google のアカウントでログインします。
+        <br />
+        初めての人も、そのまま始められます。
       </p>
-
-      <div className="segmented" role="tablist">
-        <button type="button" role="tab" aria-selected={isSignup} className={isSignup ? 'active' : ''} onClick={() => switchMode('signup')}>
-          新規登録
-        </button>
-        <button type="button" role="tab" aria-selected={!isSignup} className={!isSignup ? 'active' : ''} onClick={() => switchMode('login')}>
-          ログイン
-        </button>
-      </div>
-
-      <div className="account-fields">
-        <label className="field">
-          <span className="field-label">メールアドレス</span>
-          <input
-            className="text-input"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="off"
-            placeholder="example@mail.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          {submitted && errors.email && <span className="field-error">{errors.email}</span>}
-        </label>
-
-        <label className="field">
-          <span className="field-label">パスワード</span>
-          <div className="password-input">
-            <input
-              className="text-input"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete={isSignup ? 'new-password' : 'current-password'}
-              placeholder={isSignup ? '8文字以上' : ''}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button
-              type="button"
-              className="icon-button small"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'}
-            >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-          {submitted && errors.password && <span className="field-error">{errors.password}</span>}
-        </label>
-
-        {isSignup && (
-          <label className="field">
-            <span className="field-label">パスワード（確認）</span>
-            <input
-              className="text-input"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-            {submitted && errors.confirm && <span className="field-error">{errors.confirm}</span>}
-          </label>
-        )}
-      </div>
 
       {error && <p className="error-box">{error}</p>}
 
       <div className="bottom-bar">
-        <button type="submit" className="primary-button wide" disabled={loading}>
-          {loading ? (isSignup ? '作成中…' : 'ログイン中…') : isSignup ? 'アカウントを作成' : 'ログイン'}
+        <button type="button" className="primary-button wide" disabled={loading} onClick={handleLogin}>
+          {loading ? 'ログイン中…' : 'Google でログイン'}
         </button>
       </div>
-    </form>
+    </div>
   );
 }
