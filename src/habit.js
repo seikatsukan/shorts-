@@ -30,7 +30,7 @@ export const hasCrown = (habit) => !!habit && habit.stage === MAX_STAGE && habit
 export const GOAL_OPTIONS = [30, 60, 90, 120, 180];
 
 // コインで買うお休みチケット
-export const TICKET_PRICE = 10; // 1枚のコイン数
+export const TICKET_PRICE = 50; // 1枚のコイン数（目標1時間なら約8日分。すぐには買えないように）
 export const MAX_EXTRA_TICKETS = 3; // 持っておける枚数
 
 // ---- 日付（端末の時間帯で 0 時区切り）----

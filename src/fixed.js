@@ -12,7 +12,7 @@ import { coinsFor } from './data/apps';
 import { applyDay, dayStart, nextDay } from './habit';
 
 // 一時解除チケット
-export const UNLOCK_PRICE = 15; // 1枚のコイン数
+export const UNLOCK_PRICE = 100; // 1枚のコイン数（夜9時間の予定なら約2日分。すぐには買えないように）
 export const MAX_UNLOCK_TICKETS = 3; // 持っておける枚数
 
 // サーバーに設定する一時解除の決まり（ユーザーごとに1つ。全部のルールにまとめてかかる）

@@ -1,48 +1,46 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Check, ChevronLeft, Smartphone, Cloud, Download, ShieldCheck, Power, Layers, Timer, CalendarClock, Sparkles,
+  Check, ChevronLeft, Smartphone, Cloud, Download, ShieldCheck, Lock, Layers, Timer, CalendarClock, Sparkles,
   Coins, ExternalLink, CalendarCheck, SquarePlus,
 } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { startGoogleLogin } from '../auth';
+import { CF_LINKS } from '../data/setupGuide';
 import { installSteps, isStandalone } from '../device';
 
 const STEPS = ['準備', '使い方', 'ログイン'];
 
-// Step 1: スマホの準備（最初の1回だけ）
-// ブロックは Cloudflare Zero Trust（ユーザー自身のアカウント）がスマホの 1.1.1.1 アプリ（WARP）の通信に対して行う。
-// 証明書の手順は cf-rules（バックエンド）が「手でやる手順」として返すものと同じ
+// Step 1: スマホの準備（最初の1回だけ）。ここは概要だけにして、くわしい手順はログインの後の連携の画面で1つずつ出す
+// ブロックは Cloudflare Zero Trust（ユーザー自身のアカウント）が、スマホの Cloudflare One Agent アプリの通信に対して行う
+// 手順の中身は data/setupGuide.js（2026-11 時点の Cloudflare のドキュメントに合わせた）
 const SETUP_SLIDES = [
   {
     icon: Smartphone,
     title: '準備は最初の1回だけ',
-    body: 'このアプリは Cloudflare（無料）の\n仕組みで、スマホの通信を止めます。\n使う前に、次の3つを用意します。\n\n① Cloudflare のアカウント\n② 1.1.1.1 アプリ\n③ Cloudflare の証明書',
+    body: 'このアプリは Cloudflare（無料）の\n仕組みで、スマホの通信を止めます。\n使う前に、次の4つを準備します。\n\n① Cloudflare のアカウント\n② Cloudflare One Agent アプリ\n③ Cloudflare の証明書\n④ アプリを消せない設定\n\nくわしい手順は、ログインの後にも\n1つずつ案内します。',
   },
   {
     icon: Cloud,
     title: '① Cloudflare に登録',
-    body: 'Cloudflare のアカウントを作り、\nZero Trust の無料プランを始めます。\nこの時に決める「チーム名」は\n② で使うのでメモしておきます。',
-    links: [{ label: 'Cloudflare に登録', href: 'https://dash.cloudflare.com/sign-up' }],
+    body: 'アカウントを作り、Zero Trust の\n無料プランを始めます。\n支払い方法の入力を求められますが、\n無料プランなら請求されません。\n\n決めた「チーム名」はメモしておきます。',
+    links: [CF_LINKS.signup],
   },
   {
     icon: Download,
-    title: '② 1.1.1.1 アプリを入れる',
-    body: '「1.1.1.1」アプリを入れて、\nメニュー →「アカウント」→\n「Cloudflare Zero Trust にログイン」で\nチーム名を入れて参加します。',
-    links: [
-      { label: 'App Store', href: 'https://apps.apple.com/app/id1423538627' },
-      { label: 'Google Play', href: 'https://play.google.com/store/apps/details?id=com.cloudflare.onedotonedotonedotone' },
-    ],
+    title: '② アプリでチームに参加',
+    body: '「Cloudflare One Agent」アプリに\nチーム名を入れて参加します。\n（「1.1.1.1」アプリではありません）\n\n先に管理画面で、自分のメールアドレスが\n参加できるように許可しておきます。',
+    links: [CF_LINKS.appStore, CF_LINKS.googlePlay],
   },
   {
     icon: ShieldCheck,
     title: '③ 証明書を入れる',
-    body: 'ブロックを正しく効かせるために、\nCloudflare の証明書をスマホに入れて\n信頼します。iPhone は、入れた後に\n設定 → 一般 → 情報 →\n証明書信頼設定 でオンにします。',
+    body: 'Zero Trust の管理画面から\nCloudflare の証明書をダウンロードし、\nスマホに入れて信頼します。\n\n入れないと、サイトが正しく\n開けなくなることがあります。',
   },
   {
-    icon: Power,
-    title: '1.1.1.1 はオンのまま',
-    body: '1.1.1.1 アプリがオフだと\nロックが効きません。\n普段からオンにしておきましょう。\n\nこのアプリと Cloudflare のつなぎ方は\nログインの後に案内します。',
+    icon: Lock,
+    title: '④ アプリを消せないようにする',
+    body: 'Cloudflare One Agent を消したり\nオフにしたりすると、ロックが効きません。\n\niPhone はスクリーンタイムで\n「App の削除」を許可しない設定にします。\nパスコードは家族や友だちに\n決めてもらうと、より確実です。',
   },
 ];
 

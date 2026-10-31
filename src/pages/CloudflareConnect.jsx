@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronLeft, Cloud, ExternalLink, LogOut, Minus, X } from 'lucide-react';
+import { Check, ChevronLeft, Cloud, LogOut, Minus, X } from 'lucide-react';
 import { useApp } from '../store/AppContext';
+import { SetupGuide } from '../components/SetupGuide';
+import { AGENT_GUIDE, SIGNUP_GUIDE, appLockGuide, certGuide } from '../data/setupGuide';
 
 // Cloudflare との連携（ログインの後に1回。メニューからも開ける）
 //   ① 連携する: Cloudflare の画面で、このアプリがブロックの設定を書き込むのを許可する
@@ -21,16 +23,27 @@ const callbackErrorText = (reason) =>
 // 自動でする初期設定（true: 済み / false: できなかった / null: 確認できなかった）
 const AUTO_SETTINGS = [
   { key: 'tlsDecryptEnabled', label: '通信の中身を確かめる設定' },
-  { key: 'gatewayProxyEnabled', label: '1.1.1.1 アプリの通信を通す設定' },
+  { key: 'gatewayProxyEnabled', label: 'Cloudflare One Agent の通信を通す設定' },
 ];
 
-// 手でやる手順（サーバーが返す文）に添えるやり方
-const stepHint = (step) =>
-  step.includes('証明書')
-    ? 'iPhone は入れた後に、設定 → 一般 → 情報 → 証明書信頼設定 でオンにします。'
-    : step.includes('WARP') || step.includes('1.1.1.1')
-      ? '1.1.1.1 アプリのメニュー →「アカウント」→「Cloudflare Zero Trust にログイン」で、チーム名を入れます。'
-      : null;
+// 手でやる手順（サーバーが返す文）を、分かりやすい見出しとやり方に置き換える。知らない文はそのまま出す
+// サーバーの文は「WARP（1.1.1.1 アプリ）」のままだが、今は Cloudflare One Agent アプリで参加する（data/setupGuide.js）
+// アプリで参加してから証明書を入れる順に並べる
+const manualStepView = (step) => {
+  if (step.includes('WARP') || step.includes('1.1.1.1') || step.includes('Zero Trust 組織')) {
+    return { order: 0, title: 'Cloudflare One Agent アプリで、自分のチームに参加する', guide: AGENT_GUIDE };
+  }
+  if (step.includes('証明書')) {
+    return { order: 1, title: 'Cloudflare の証明書を入れて、信頼する', guide: certGuide() };
+  }
+  return { order: 2, title: step, guide: null };
+};
+
+// サーバーの手順に無いが、アプリ側で足す手順（最後に出す）
+const APP_LOCK_STEP = 'app-lock';
+const LOCAL_STEPS = () => [
+  { step: APP_LOCK_STEP, title: 'Cloudflare One Agent を消せないようにする', guide: appLockGuide() },
+];
 
 export default function CloudflareConnect() {
   const navigate = useNavigate();
@@ -144,12 +157,8 @@ function ConnectStep({ callbackError, connect }) {
         <p>
           ボタンを押すと Cloudflare の画面が開きます。ログインして「許可」を押すと、このアプリに戻ってきます。
         </p>
-        <p className="connect-note">
-          まだ Cloudflare に登録していない人は、先に登録して Zero Trust の無料プランを始めてください。
-        </p>
-        <a className="onboarding-link" href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer">
-          Cloudflare に登録 <ExternalLink size={14} />
-        </a>
+        <p className="connect-note">まだ Cloudflare に登録していない人は、先に登録して Zero Trust の無料プランを始めてください。</p>
+        <SetupGuide guide={SIGNUP_GUIDE} label="登録のやり方を見る" />
       </section>
 
       {(error || callbackError) && <p className="error-box">{error ?? callbackErrorText(callbackError)}</p>}
@@ -191,7 +200,8 @@ function SetupStep({ accountName, setup, ready, runSetup, onDone }) {
 
   const steps = setup?.manualSteps ?? [];
   const autoFailed = AUTO_SETTINGS.some(({ key }) => setup?.[key] === false);
-  const canFinish = !!setup && !running && !autoFailed && steps.every((s) => checked.has(s));
+  const canFinish =
+    !!setup && !running && !autoFailed && [...steps, APP_LOCK_STEP].every((s) => checked.has(s));
   const toggle = (step) =>
     setChecked((prev) => {
       const next = new Set(prev);
@@ -242,23 +252,26 @@ function SetupStep({ accountName, setup, ready, runSetup, onDone }) {
         )}
       </section>
 
-      {steps.length > 0 && (
+      {setup && (
         <section className="card">
           <h3 className="connect-heading">スマホで自分でやること</h3>
-          <p className="connect-note">アプリからは確かめられないので、済んだらチェックを付けてください。</p>
+          <p className="connect-note">上から順に進めてください。アプリからは確かめられないので、済んだらチェックを付けます。</p>
           <ul className="connect-manual">
-            {steps.map((step) => {
-              const hint = stepHint(step);
+            {[
+              ...steps.map((step) => ({ step, ...manualStepView(step) })).sort((a, b) => a.order - b.order),
+              ...LOCAL_STEPS(),
+            ].map(({ step, title, guide }, i) => {
               const isChecked = ready || checked.has(step);
               return (
                 <li key={step}>
                   <label>
                     <input type="checkbox" checked={isChecked} disabled={ready} onChange={() => toggle(step)} />
                     <span>
-                      {step}
-                      {hint && <small>{hint}</small>}
+                      <span className="connect-manual-no">{i + 1}</span>
+                      {title}
                     </span>
                   </label>
+                  {guide && <SetupGuide guide={guide} />}
                 </li>
               );
             })}
