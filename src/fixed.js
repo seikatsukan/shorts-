@@ -3,6 +3,7 @@
 // - 最初に「ロックの予定」（曜日・時間帯・アプリ）を決める。予定ごとにサーバーの時間帯（window）のルールを1つ作り、
 //   毎週その時間は自動でブロックされる
 // - 予定の途中で使えるのは一時解除だけ。一時解除チケットはコインで買う
+// - 始めた後も予定を足すことはできる（厳しくする変更なのですぐ反映）。今ある予定を変える・外すことはできない
 // - 成長は「ロックの予定がある日」だけ数え、その日に一時解除を使わなければ成功、使ったら失敗
 //   （色の上がり方・下がり方・王冠は自分でロックするモードと同じ。お休みチケットは無い）
 // - コインは、一時解除を使わずにやりきった予定の長さぶん（10分で1枚）。その日の判定の時にもらえる
@@ -101,14 +102,17 @@ const unlockedDuring = (unlocks, o) => unlocks.some((u) => u.requestedAt < o.end
 // - 予定の無い日は数えずに飛ばす
 // - その日の予定が全部終わってから判定する（日をまたぐ予定は翌日に終わってから）
 // - habit.startedAt（モードを始めた時刻）より前に終わっていた予定は数えない
+// - 後から足した予定（entry.addedAt）は、足した時刻より後に始まる分から数える（さかのぼって失敗にしない）
 // - 一時解除を使った日は失敗。使わなかった予定の長さぶんのコインをもらう（失敗した日も、やりきった予定のぶんはもらえる）
 export function settleFixed(habit, schedule, unlocks, now) {
   let h = habit;
   const events = [];
   let coins = 0;
   for (let d = h.settledUntil; d <= dayStart(now); d = nextDay(d)) {
-    // モードを始める前に終わっていた予定は数えない
-    const list = occurrencesOn(schedule, d).filter((o) => o.end > (h.startedAt ?? 0));
+    // モードを始める前に終わっていた予定と、足す前に始まっていた予定は数えない
+    const list = occurrencesOn(schedule, d).filter(
+      (o) => o.end > (h.startedAt ?? 0) && o.start >= (o.entry.addedAt ?? 0),
+    );
     if (list.length === 0) {
       h = { ...h, settledUntil: nextDay(d) };
       continue;

@@ -29,10 +29,6 @@ export default function ModeSelect() {
           <strong>自分でロック</strong>
           <span className="mode-lead">これから勉強・集中したい時に</span>
           <span>使いたくない時に、その場で自分でロック。1日の目標時間を達成した日が続くとスライムが育ちます。</span>
-          <span className="mode-tags">
-            <span>目標時間</span>
-            <span>お休みチケット</span>
-          </span>
         </span>
       </button>
 
@@ -45,10 +41,6 @@ export default function ModeSelect() {
           <span className="mode-lead">毎日の習慣にしたい人に</span>
           <span>
             曜日と時間帯を決めておくと、その時間は毎週自動でロック。一時解除を使わずに過ごせた日が続くとスライムが育ちます。
-          </span>
-          <span className="mode-tags">
-            <span>毎週くり返し</span>
-            <span>一時解除チケット</span>
           </span>
         </span>
       </button>

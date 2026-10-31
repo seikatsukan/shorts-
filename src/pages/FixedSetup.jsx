@@ -210,7 +210,8 @@ export default function FixedSetup() {
 }
 
 // 予定1つ分の入力（曜日・時間帯・アプリ）。よく使う組み合わせはボタン1つで入る
-function EntrySheet({ initial, allApps, onSave, onClose }) {
+// 固定時間を始めた後に予定を足す時（FixedHome.jsx）にも使う
+export function EntrySheet({ initial, allApps, onSave, onClose }) {
   const { saveCustomApp, customApps } = useApp();
   const [days, setDays] = useState(initial.days);
   const [start, setStart] = useState(initial.start);

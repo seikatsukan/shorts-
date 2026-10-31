@@ -72,12 +72,8 @@ export default function Confirm() {
         ))}
       </section>
 
-      <section className="card">
-        <h3 className="card-label">目的</h3>
-        {/* 目的は1日の目標と一緒に決めたもの（ロックのたびには聞かない） */}
-        <p className="confirm-purpose">{habit?.purpose ? `${habit.purpose}のため` : '設定なし'}</p>
-        <p className="sheet-note">メニューの「1日の目標と目的」で変えられます</p>
-      </section>
+      {/* 目的は1日の目標と一緒に決めたもの（ロックのたびには聞かない） */}
+      <p className="confirm-purpose-line">🎯 {habit?.purpose ? `${habit.purpose}のため` : '目的なし'}</p>
 
       <p className="warning-text">
         <TriangleAlert size={16} /> スタート後はキャンセルできません

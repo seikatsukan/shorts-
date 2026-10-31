@@ -23,7 +23,7 @@ export function normalizeDomain(input) {
 export const isValidDomain = (domain) => /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(domain);
 
 // 制限時間の選択肢（分）
-export const TIME_OPTIONS = [20, 30, 60];
+export const TIME_OPTIONS = [30, 60, 120];
 
 // 目的の選択肢（自分でロックの1日の目標と一緒に決める。「〜のため」と表示する）
 export const PURPOSES = ['勉強', '仕事', '読書', '運動', '睡眠'];

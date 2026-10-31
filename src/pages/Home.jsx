@@ -128,7 +128,7 @@ export default function Home() {
             </button>
             {/* 固定時間へはいつでも移れる（スライムの成長とコインはリセット。予定の画面で知らせる） */}
             <button className="menu-item" onClick={() => navigate('/fixed-setup')}>
-              <CalendarClock size={20} /> 固定時間で自動ロックにする
+              <CalendarClock size={20} /> 固定時間に切り替える
             </button>
             <button className="menu-item" onClick={() => navigate('/connect')}>
               <Cloud size={20} /> Cloudflare の連携

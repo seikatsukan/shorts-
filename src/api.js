@@ -137,24 +137,35 @@ export async function setupFixedSchedule(entries, progress = {}) {
     }
     for (const entry of entries) {
       if (done.rules[entry.id]) continue;
-      const targets = entry.apps.map((app) => targetFor(app, options));
-      const res = await request('POST', '/rules', {
-        name: `${formatDays(entry.days)} ${formatTimeRange(entry.start, entry.end)}`.slice(0, 50),
-        schedule: { type: 'window', start: entry.start, end: entry.end, days: entry.days },
-        target: {
-          type: 'sites',
-          apps: [...new Set(targets.flatMap((t) => t.apps))],
-          domains: [...new Set(targets.flatMap((t) => t.domains))],
-          categoryIds: [],
-        },
-      });
-      done.rules[entry.id] = res.rule.id;
+      done.rules[entry.id] = await createWindowRule(entry, options);
     }
     return done;
   } catch (e) {
     e.progress = done;
     throw e;
   }
+}
+
+// 始めた後に予定を1つ足す（ルールを作るのはいつもすぐ反映）。entry は setupFixedSchedule と同じ形。戻り値はルールID
+export async function addFixedRule(entry) {
+  const options = await request('GET', '/options');
+  return createWindowRule(entry, options);
+}
+
+// 予定1つ分の時間帯（window）のルールを作る
+async function createWindowRule(entry, options) {
+  const targets = entry.apps.map((app) => targetFor(app, options));
+  const res = await request('POST', '/rules', {
+    name: `${formatDays(entry.days)} ${formatTimeRange(entry.start, entry.end)}`.slice(0, 50),
+    schedule: { type: 'window', start: entry.start, end: entry.end, days: entry.days },
+    target: {
+      type: 'sites',
+      apps: [...new Set(targets.flatMap((t) => t.apps))],
+      domains: [...new Set(targets.flatMap((t) => t.domains))],
+      categoryIds: [],
+    },
+  });
+  return res.rule.id;
 }
 
 // 一時解除を申請する（全部のルール）。申請した時点でサーバーの今日の回数を1回使う
@@ -189,6 +200,11 @@ export async function fetchPendingChanges() {
 // 反映待ちの変更を承認して反映する（approvableFrom より前は 409 NOT_APPROVABLE_YET）
 export async function approvePendingChange(id) {
   return request('POST', `/pending-changes/${id}/approve`);
+}
+
+// 反映待ちの変更を取り消す（いつでもすぐ。見つからない時は 404）
+export async function withdrawPendingChange(id) {
+  await request('DELETE', `/pending-changes/${id}`);
 }
 
 const pendingOf = (p) => ({
@@ -459,6 +475,13 @@ function mockHandle(method, path, body) {
   if (method === 'GET' && path === '/pending-changes') {
     saveMock(db);
     return db.pending;
+  }
+  const withdrawMatch = path.match(/^\/pending-changes\/([^/]+)$/);
+  if (withdrawMatch && method === 'DELETE') {
+    if (!db.pending.some((q) => q.id === withdrawMatch[1])) fail(404, 'NOT_FOUND', '見つかりません');
+    db.pending = db.pending.filter((q) => q.id !== withdrawMatch[1]);
+    saveMock(db);
+    return null;
   }
   const approveMatch = path.match(/^\/pending-changes\/([^/]+)\/approve$/);
   if (approveMatch && method === 'POST') {

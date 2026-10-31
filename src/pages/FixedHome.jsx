@@ -1,12 +1,14 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CalendarX, Cloud, Ellipsis, Lock, LockOpen, LogOut, Target, X } from 'lucide-react';
+import { CalendarClock, CalendarX, Cloud, Ellipsis, LockOpen, LogOut, Plus, Target, X } from 'lucide-react';
 import { useApp, useNow } from '../store/AppContext';
 import { AppIcon, ErrorBoundary, Sheet } from '../components/ui';
 import { ColorTrack, HabitReport } from '../components/habitUi';
 import { InstallHint } from '../components/InstallHint';
 import { PurposeSheet } from '../components/PurposeSheet';
-import { formatClock, formatCountdown } from '../data/apps';
+import { EntrySheet } from './FixedSetup';
+import { DEFAULT_APPS, formatClock, formatCountdown } from '../data/apps';
+import { uuid } from '../utils';
 import { COLORS, MAX_STAGE, STEP_DAYS, dayStart, hasCrown } from '../habit';
 import {
   DAY_LABELS, MAX_UNLOCK_TICKETS, UNLOCK_PRICE, UNLOCK_SETTINGS, activeOccurrences, formatDays, formatTimeRange, nextOccurrence,
@@ -25,13 +27,15 @@ export default function FixedHome() {
   const navigate = useNavigate();
   const {
     fixed, fixedEvents, dismissFixedEvents, dismissFixedNotice, buyUnlockTicket, startUnlock, cancelFixed,
-    approvePending, setFixedPurpose, logOut,
+    approvePending, withdrawCancel, setFixedPurpose, addFixedEntry, customApps, logOut,
   } = useApp();
   const now = useNow();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [tapCount, setTapCount] = useState(0);
-  // 開いているポップアップ: 'shop' / 'unlock' / 'schedule' / 'purpose' / 'cancel' / null
+  // 開いているポップアップ: 'shop' / 'unlock' / 'schedule' / 'add-entry' / 'add-confirm' / 'purpose' / 'cancel' / 'cancel-done' / 'withdraw' / null
+  // 予定を足す時は「ロックの予定」→ 入力（add-entry）→ 確認（add-confirm）の順に開く
   const [popup, setPopup] = useState(null);
+  const [newEntry, setNewEntry] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -54,15 +58,25 @@ export default function FixedHome() {
   const cancelPending = fixed.pending.filter((p) => p.kind === 'cancel');
   const settingsPending = fixed.pending.find((p) => p.kind === 'settings');
   const approvable = fixed.pending.some((p) => p.approvableFrom <= now);
+  // キャンセルを承認できる時間（予定ごとの反映待ちを全部承認できる間）
+  const cancelWindow = cancelPending.length > 0 && {
+    from: Math.max(...cancelPending.map((p) => p.approvableFrom)),
+    until: Math.min(...cancelPending.map((p) => p.expiresAt)),
+  };
+  // キャンセルを申請している間は予定を足せない
+  const canAddEntry = !fixed.cancelling && cancelPending.length === 0;
 
+  // 成功したら true（ポップアップは閉じる）
   const run = async (fn) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
       setPopup(null);
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -160,9 +174,9 @@ export default function FixedHome() {
           {cancelPending.length > 0 && (
             <p>
               <strong>固定時間のキャンセルを申請中です。</strong>
-              {approvable
-                ? '承認すると予定が消え、もう一度使い方を選べます。'
-                : `${formatDate(Math.min(...cancelPending.map((p) => p.approvableFrom)))} から承認できます。それまでは予定どおりロックされます。`}
+              {cancelWindow.from <= now
+                ? `${formatDate(cancelWindow.until)} までに「承認する」を押すと予定が消え、もう一度使い方を選べます。過ぎるとキャンセルは取り消されます。`
+                : `${formatDate(cancelWindow.from)}〜${formatDate(cancelWindow.until)} の間に「承認する」を押すとキャンセルされます。それまでは予定どおりロックされます。`}
             </p>
           )}
           {settingsPending && (
@@ -172,11 +186,18 @@ export default function FixedHome() {
               それまでは今の設定（1回{fixed.unlockMinutes}分）で一時解除されます。
             </p>
           )}
-          {approvable && (
-            <button className="primary-button small" disabled={busy} onClick={() => run(approvePending)}>
-              承認する
-            </button>
-          )}
+          <div className="notice-actions">
+            {cancelPending.length > 0 && (
+              <button className="text-button" disabled={busy} onClick={() => setPopup('withdraw')}>
+                キャンセルをやめる
+              </button>
+            )}
+            {approvable && (
+              <button className="primary-button small" disabled={busy} onClick={() => run(approvePending)}>
+                承認する
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -317,7 +338,57 @@ export default function FixedHome() {
               </li>
             ))}
           </ul>
-          <p className="sheet-note">予定は変えられません。変える時は、キャンセルしてから決め直します。</p>
+          {canAddEntry && (
+            <button
+              className="secondary-button add-entry"
+              onClick={() => {
+                setNewEntry({ id: uuid(), days: [], start: '22:00', end: '07:00', apps: [] });
+                setPopup('add-entry');
+              }}
+            >
+              <Plus size={18} /> 予定を追加
+            </button>
+          )}
+          <p className="sheet-note">
+            {canAddEntry
+              ? '予定を足すことはいつでもできます。今ある予定は、変えたり外したりできません。'
+              : 'キャンセルを申請している間は、予定を足せません。'}
+          </p>
+        </Sheet>
+      )}
+
+      {popup === 'add-entry' && newEntry && (
+        <EntrySheet
+          key={newEntry.id}
+          initial={newEntry}
+          allApps={[...DEFAULT_APPS.map((a) => a.name), ...customApps.map((a) => a.name)]}
+          onSave={(entry) => {
+            setNewEntry(entry);
+            setPopup('add-confirm');
+          }}
+          onClose={() => setPopup('schedule')}
+        />
+      )}
+
+      {popup === 'add-confirm' && newEntry && (
+        <Sheet title="この予定を追加しますか？" onClose={() => setPopup('add-entry')}>
+          <ul className="confirm-entries">
+            <li>
+              <strong>{formatDays(newEntry.days)}</strong> {formatTimeRange(newEntry.start, newEntry.end)}
+              <span>{newEntry.apps.join('・')}</span>
+            </li>
+          </ul>
+          <ul className="rule-notes">
+            <li>
+              <strong>追加した予定は、変えたり外したりできません。</strong>外す時は、固定時間ごとキャンセルします。
+            </li>
+            <li>追加するとすぐに効きます。今がその時間帯なら、今からロックされます。</li>
+            <li>今日の判定には、追加した時刻より後に始まる分から数えます。</li>
+          </ul>
+          <button className="primary-button full" disabled={busy} onClick={() => run(() => addFixedEntry(newEntry))}>
+            <Plus size={18} /> 追加する
+          </button>
+          {error && <p className="field-error">{error}</p>}
         </Sheet>
       )}
 
@@ -343,10 +414,53 @@ export default function FixedHome() {
             <li>承認しないまま期限を過ぎると、キャンセルは取り消されて予定が続きます。</li>
             <li>キャンセルが反映されたら、もう一度使い方（自分でロック／固定時間）を選びます。今のスライムの成長とコインは引き継げません。</li>
           </ul>
-          <button className="primary-button full danger" disabled={busy} onClick={() => run(cancelFixed)}>
+          <button
+            className="primary-button full danger"
+            disabled={busy}
+            onClick={async () => {
+              if (await run(cancelFixed)) setPopup('cancel-done');
+            }}
+          >
             キャンセルを申請する
           </button>
           {error && <p className="field-error">{error}</p>}
+        </Sheet>
+      )}
+
+      {popup === 'withdraw' && (
+        <Sheet title="キャンセルをやめますか？" onClose={() => setPopup(null)}>
+          <ul className="rule-notes">
+            <li>予定はそのまま続きます。スライムの成長とコインもそのままです。</li>
+            <li>もう一度キャンセルする時は、また申請して翌朝以降の承認からになります。</li>
+          </ul>
+          <button className="primary-button full" disabled={busy} onClick={() => run(withdrawCancel)}>
+            キャンセルをやめる
+          </button>
+          {error && <p className="field-error">{error}</p>}
+        </Sheet>
+      )}
+
+      {/* 申請した後に、承認できる時間と期限を知らせる */}
+      {popup === 'cancel-done' && cancelWindow && (
+        <Sheet title="キャンセルを申請しました" onClose={() => setPopup(null)}>
+          <ul className="confirm-entries">
+            <li>
+              <strong>承認できる時間</strong>
+              <span>
+                {formatDate(cancelWindow.from)} 〜 {formatDate(cancelWindow.until)}
+              </span>
+            </li>
+          </ul>
+          <ul className="rule-notes">
+            <li>この間にアプリを開いて、メイン画面の「承認する」を押すとキャンセルされます。</li>
+            <li>
+              <strong>期限を過ぎるとキャンセルは取り消され、</strong>予定はそのまま続きます。
+            </li>
+            <li>承認するまでは、予定どおりロックされます。</li>
+          </ul>
+          <button className="primary-button full" onClick={() => setPopup(null)}>
+            OK
+          </button>
         </Sheet>
       )}
 
@@ -357,12 +471,6 @@ export default function FixedHome() {
             <p>サーバーに送信中…</p>
           </div>
         </div>
-      )}
-
-      {locked && (
-        <p className="fixed-lock-note">
-          <Lock size={14} /> 予定の時間はロックされています
-        </p>
       )}
     </div>
   );

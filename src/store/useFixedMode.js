@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { ApiError, approvePendingChange, cancelFixedSchedule, devMakeApprovable, requestUnlock, setupFixedSchedule } from '../api';
+import {
+  ApiError, addFixedRule, approvePendingChange, cancelFixedSchedule, devMakeApprovable, requestUnlock, setupFixedSchedule,
+  withdrawPendingChange,
+} from '../api';
 import { applyDay, newHabit } from '../habit';
 import { MAX_UNLOCK_TICKETS, UNLOCK_PRICE, UNLOCK_SETTINGS, settleFixed } from '../fixed';
 
@@ -10,6 +13,7 @@ import { MAX_UNLOCK_TICKETS, UNLOCK_PRICE, UNLOCK_SETTINGS, settleFixed } from '
 //   purpose: 目的（始める前に聞く。null は目的なし）
 // user.fixed: 始めた後の状態（自分でロックするモードのコイン・スライムとは別に持つ）
 //   schedule: 予定 / ruleIds: { 予定のid: サーバーのルールID } / purpose: 目的（null は目的なし）
+//     始めた後に足した予定には addedAt（足した時刻）が付く。判定はその時刻より後に始まる分から
 //   habit: 色の段階など（habit.js の形。お休みチケットは使わない） / events: まだ知らせていない判定の結果
 //   coins / unlockTickets: 一時解除チケットの枚数 / unlocks: 使った一時解除 [{ id, requestedAt, startsAt, endsAt }]
 //   unlockMinutes: 今サーバーで効いている一時解除の長さ（分）
@@ -17,6 +21,12 @@ import { MAX_UNLOCK_TICKETS, UNLOCK_PRICE, UNLOCK_SETTINGS, settleFixed } from '
 //   cancelling: キャンセルを申請中か / notice: 一度だけ知らせる文（キャンセルの期限切れなど）
 
 const NO_EVENTS = [];
+
+// サーバーに送る形にする（カスタムアプリはドメインを付ける）
+const withDomains = (entry, customApps) => ({
+  ...entry,
+  apps: entry.apps.map((name) => ({ name, domain: customApps.find((a) => a.name === name)?.domain })),
+});
 
 export function useFixedMode({ user, updateUser, now }) {
   const fixed = user.fixed ?? null;
@@ -70,8 +80,7 @@ export function useFixedMode({ user, updateUser, now }) {
   const startFixed = useCallback(async () => {
     const draft = user.fixedDraft;
     if (!draft?.entries.length) return;
-    const domainOf = (name) => user.customApps.find((a) => a.name === name)?.domain;
-    const entries = draft.entries.map((e) => ({ ...e, apps: e.apps.map((name) => ({ name, domain: domainOf(name) })) }));
+    const entries = draft.entries.map((e) => withDomains(e, user.customApps));
     let result;
     try {
       result = await setupFixedSchedule(entries, draft.progress ?? {});
@@ -108,6 +117,23 @@ export function useFixedMode({ user, updateUser, now }) {
     }));
   }, [user.fixedDraft, user.customApps, now, updateUser]);
 
+  // 予定を1つ足す（厳しくする変更なので、サーバーではすぐ反映される。足した予定は変えたり外したりできない）
+  // キャンセルを申請している間は足さない（キャンセルで消すルールの一覧に入らず、ブロックだけ残ってしまうため）
+  const addFixedEntry = useCallback(
+    async (entry) => {
+      const f = fixedRef.current;
+      if (!f || f.cancelling || f.pending.some((p) => p.kind === 'cancel')) return;
+      const ruleId = await addFixedRule(withDomains(entry, user.customApps));
+      const t = now();
+      updateFixed((x) => ({
+        ...x,
+        schedule: [...x.schedule, { ...entry, addedAt: t }],
+        ruleIds: { ...x.ruleIds, [entry.id]: ruleId },
+      }));
+    },
+    [user.customApps, now, updateFixed],
+  );
+
   // 一時解除を使う（チケットを1枚使う。今日は失敗になる）
   const startUnlock = useCallback(async () => {
     if (!fixedRef.current || fixedRef.current.unlockTickets <= 0) return;
@@ -133,6 +159,29 @@ export function useFixedMode({ user, updateUser, now }) {
       cancelling: true,
       pending: [...x.pending.filter((p) => p.kind !== 'cancel'), ...pending.map((p) => ({ ...p, kind: 'cancel' }))],
     }));
+  }, [updateFixed]);
+
+  // キャンセルをやめる（反映待ちのルールの削除を取り消す。予定はそのまま続く）
+  // 取り消せたもの・もう無いもの（404）は一覧から外し、全部外れたらキャンセル中でなくなる
+  const withdrawCancel = useCallback(async () => {
+    const f = fixedRef.current;
+    if (!f) return;
+    const done = [];
+    let error = null;
+    for (const p of f.pending.filter((x) => x.kind === 'cancel')) {
+      try {
+        if (p.id) await withdrawPendingChange(p.id);
+        done.push(p.id);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) done.push(p.id);
+        else error = e;
+      }
+    }
+    updateFixed((x) => {
+      const pending = x.pending.filter((p) => !(p.kind === 'cancel' && done.includes(p.id)));
+      return { ...x, pending, cancelling: pending.some((p) => p.kind === 'cancel') };
+    });
+    if (error) throw error;
   }, [updateFixed]);
 
   // 承認できるようになった変更をまとめて承認する。キャンセルが全部反映されたらモードを選び直す
@@ -179,8 +228,10 @@ export function useFixedMode({ user, updateUser, now }) {
     fixed,
     fixedEvents: fixed?.events ?? NO_EVENTS,
     startFixed,
+    addFixedEntry,
     startUnlock,
     cancelFixed,
+    withdrawCancel,
     approvePending,
     evaluateFixed,
     chooseTimerMode: () => updateUser((u) => ({ ...u, mode: 'timer' })),

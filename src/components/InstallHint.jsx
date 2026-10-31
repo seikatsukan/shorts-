@@ -33,8 +33,8 @@ export function InstallHint() {
     <>
       <div className="notice-card">
         <p>
-          <strong>ホーム画面に追加して使ってください。</strong>
-          ブラウザのままだと、しばらく開かない間にコインやスライムが消えることがあります。
+          <strong>ホーム画面に追加してください。</strong>
+          ブラウザのままだと、データが消えることがあります。
         </p>
         <div className="notice-actions">
           <button className="text-button" onClick={dismiss}>
