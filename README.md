@@ -42,7 +42,7 @@ API_PROXY_TARGET=http://localhost:8787
 ```
 
 - `VITE_API_BASE`: API の場所。仕様どおり画面と同じオリジンの `/api` 以下。サーバーが `/api` を付けずに置いた場合は `/`（今のサーバーはログインの `/auth` と `/health` だけで、ルールの API をどこに置くかはまだ分からない）
-- `API_PROXY_TARGET`: 開発サーバー（Vite）が `/api` と `/auth` を流す先（[`vite.config.js`](vite.config.js)）。手元の cf-rules-api（`uv run pywrangler dev`）なら `http://localhost:8787`。デプロイ済みのものの URL はバックエンド担当に聞く
+- `API_PROXY_TARGET`: 開発サーバー（Vite）が `/api`・`/auth`・`/cloudflare` を流す先（[`vite.config.js`](vite.config.js)）。手元の cf-rules-api（`uv run pywrangler dev`）なら `http://localhost:8787`。デプロイ済みのものの URL はバックエンド担当に聞く
 - ログインは Cookie（`session`）で続くので、画面と API を同じオリジンに見せる必要がある（cf-rules-api の README の決まり）
 - 今のサーバーは偽の Google ログインだけなので、「Google でログイン」を押すとテスト用のユーザー（alice）でログインした状態になる
 

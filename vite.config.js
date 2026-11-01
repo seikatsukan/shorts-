@@ -2,13 +2,14 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 
 // https://vite.dev/config/
-// .env に API_PROXY_TARGET=http://localhost:8787 のように書くと、/api と /auth をそのサーバーへ流す
+// .env に API_PROXY_TARGET=http://localhost:8787 のように書くと、/api と /auth と /cloudflare をそのサーバーへ流す
+// （/cloudflare は Cloudflare 連携の戻り先。cf-rules-api の .dev.vars の CF_REDIRECT_URI を http://localhost:5173/cloudflare/callback にする）
 // （API とログインの Cookie を画面と同じオリジンに見せるため。cf-rules-api の README の決まり）
 export default defineConfig(({ mode }) => {
   const target = loadEnv(mode, process.cwd(), '').API_PROXY_TARGET
   const proxy = target && { target, changeOrigin: true }
   return {
     plugins: [react()],
-    server: proxy ? { proxy: { '/api': proxy, '/auth': proxy } } : undefined,
+    server: proxy ? { proxy: { '/api': proxy, '/auth': proxy, '/cloudflare': proxy } } : undefined,
   }
 })
