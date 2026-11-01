@@ -18,8 +18,6 @@ SNS などのアプリを、決めた時間だけ使えなくする Web アプ�
 8. [アカウント（認証）](#アカウント認証)
 9. [JSON の例（自分でロック）](#json-の例自分でロック)
 10. [キャラクター（slime.glb）](#キャラクターslimeglb)
-11. [未決定のこと](#未決定のこと)
-12. [ファイル構成](#ファイル構成)
 
 ---
 
@@ -606,56 +604,3 @@ Blender で作り直した時は、同じ名前で上書きすればそのまま
 - 大きさ（`SCALE`）・歩く幅の上限・歩く速さ・口の開き具合・銀色の質感・王冠をかぶせる深さ・チケットの飛び方は、`Slime.jsx` の先頭の定数で変えられる。色そのものは `habit.js` の `COLORS`
 - アクションが無い場合はその動きを飛ばすので、アクションを減らしてもエラーにはならない
 - モデルの読み込みに失敗しても、キャラの部分が空になるだけで画面は止まらない
-
----
-
-## 未決定のこと
-
-| 項目 | 今の状態 | どうしたいか |
-|---|---|---|
-| ルールの API | 仕様（案）はあるが、サーバーにはまだログインしか無い | 実装されたら `.env` で本物につなぐ |
-| 動いているタイマーをもう一度始めた時 | 仕様に無いので、アプリでは始めない | 仕様に入ったら、延長などに使うか考える |
-| カタログに無いアプリ（Facebook・Threads） | ドメイン1つで止めているので、一部が使えることがある | ドメインを足す |
-| 別の端末で始めたロック | 開始の時に防ぐだけで、メイン画面の一覧には出ない | `GET /status` から一覧を作る |
-
----
-
-## ファイル構成
-
-```
-src/
-  api.js                 サーバー（cf-rules-api）との通信（＋モック）
-  storage.js             ロックの記録の保存先とのやりとり（今は端末）
-  auth.js                Google ログイン（サーバーの /auth）
-  device.js              ホーム画面に追加したか・データを消されにくくする処理
-  habit.js               スライムの成長と、自分でロックの毎日の目標のルール
-  fixed.js               固定時間で自動ロックのルール（予定の時間帯・成功の判定・コイン・一時解除）
-  utils.js               共通の小さな関数（http でも使える ID 生成）
-  store/AppContext.jsx   アプリ全体の状態（コイン・ロック中のアプリ・入力途中の内容など）
-  store/useFixedMode.js  固定時間で自動ロックの状態と操作
-  store/useCloudflare.js Cloudflare との連携の状態と操作
-  data/apps.js           アプリ一覧・目的・コインのルール・表示用の書式
-  data/setupGuide.js     Cloudflare の準備の手順（登録・アプリで参加・証明書）
-  components/
-    ui.jsx               アイコン・ポップアップ・ヘッダーなどの共通部品
-    habitUi.jsx          21日の道のりと結果のお知らせ（2つのモードで共通）
-    PurposeSheet.jsx     目的を決めるポップアップ（2つのモードで共通）
-    InstallHint.jsx      ホーム画面に追加するよう勧めるお知らせ
-    SetupGuide.jsx       準備の手順を、開くと番号付きで見られる部品
-    Slime.jsx            キャラクター（3D）
-    subdivide.js         キャラクターの表面を滑らかにする処理
-  pages/
-    Onboarding.jsx       説明ページ（① 準備 → ② 使い方 → ③ Google でログイン）
-    CloudflareConnect.jsx Cloudflare との連携（ログインの後に1回）
-    ModeSelect.jsx       使い方のモードを選ぶ
-    Home.jsx             メイン画面（自分でロック）
-    AppSelect.jsx        ① 制限するアプリと時間
-    Confirm.jsx          ② 最終確認 → サーバーでタイマーを開始
-    Stats.jsx            まとめ（今週 / 今月のグラフ・カレンダー）
-    FixedSetup.jsx       固定時間の予定を決める
-    FixedHome.jsx        メイン画面（固定時間で自動ロック）
-public/
-  models/slime.glb       キャラクター（Blender で作成）
-  manifest.webmanifest   ホーム画面に追加した時の名前・アイコン・開き方
-  icon-*.png, apple-touch-icon.png  ホーム画面のアイコン（favicon.svg から作った）
-```
