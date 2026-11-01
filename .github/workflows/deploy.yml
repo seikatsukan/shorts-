@@ -1,0 +1,49 @@
+name: build-and-deploy
+
+# main に入ったらビルドして Cloudflare Workers（shorts-app）にデプロイする。PR ではビルドと lint だけ。
+# 準備（secrets と vars）が終わるまでデプロイはしない。手順は README の「デプロイ」
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          # 空ならモックで動く。本物の API につなぐときはリポジトリの変数に /api を入れる
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+  deploy:
+    needs: build
+    if: vars.SETUP_DONE == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency: deploy
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: npx wrangler deploy
