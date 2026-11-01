@@ -1,0 +1,20 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// 画面を配る Worker。/api /auth /cloudflare だけは Service Binding で cf-rules-api に渡す
+	// （ログインの Cookie を画面と同じオリジンに見せるため。Vite のプロキシと同じ形）
+	"name": "shorts-app",
+	"main": "worker.js",
+	// hiragi の製品用 Cloudflare アカウント（秘密ではない）
+	"account_id": "947bd5a425ecbdc0e1768218cd362b94",
+	"compatibility_date": "2026-10-01",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		// 知らないパスは index.html を返す（BrowserRouter のため）
+		"not_found_handling": "single-page-application",
+		// ここに当たるパスは静的ファイルより先に worker.js が受ける
+		"run_worker_first": ["/api/*", "/auth/*", "/cloudflare/*"]
+	},
+	"services": [{ "binding": "API", "service": "cf-rules-api" }],
+	"observability": { "enabled": true }
+}

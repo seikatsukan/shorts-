@@ -51,9 +51,23 @@ API_PROXY_TARGET=http://localhost:8787
 サーバー（cf-rules-api）は Cloudflare Workers（`https://〜.workers.dev`）にデプロイされる。家の PC で動かすものではない。
 ログインの Cookie はサーバーと同じドメインの画面にしか送られないので、**この画面もサーバーと同じドメインから配る**必要がある（API の仕様の「画面と同じオリジンの `/api`」）。
 
-- 配り方（同じ Workers から画面のファイルも配る、など）はサーバーを管理している側と決める。アプリのコードは `/api`・`/auth` を相対パスで呼ぶので、どこに置いても変えなくてよい
+- 画面は Worker `shorts-app`（[`wrangler.jsonc`](wrangler.jsonc)）から配る。`/api`・`/auth`・`/cloudflare` へのアクセスだけは [`worker.js`](worker.js) が Service Binding でサーバー（`cf-rules-api`）にそのまま渡すので、ブラウザからは画面と API が同じオリジンに見える。アプリのコードは相対パスで呼ぶので変えなくてよい
 - `npm run build` でできる `dist/` を配る。本番のビルドでは `.env` の `VITE_API_BASE` だけが効く（`API_PROXY_TARGET` は開発サーバー用）
 - https で配るので、ホーム画面への追加・データを消さないよう頼む処理（`navigator.storage.persist()`）もそのまま効く
+
+### デプロイ
+
+`main` に入ると GitHub Actions（[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)）がビルドして `shorts-app` にデプロイする。PR ではビルドと lint だけ。
+
+準備（リポジトリの Settings → Secrets and variables → Actions）:
+
+| 名前 | 種類 | 中身 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | secret | Cloudflare の API トークン（Workers Scripts の編集権限） |
+| `SETUP_DONE` | variable | `true` にするとデプロイが動く。それまではビルドだけ |
+| `VITE_API_BASE` | variable | 空ならモックで動く。本物のサーバーにつなぐときは `/api` |
+
+手元からデプロイするときは `npx wrangler login` してから `npm run deploy`（`.env` の `VITE_API_BASE` が効く）。
 
 ### スマホで試す
 
